@@ -1,0 +1,81 @@
+id: hook_plus_product
+name: Kept hook plus product shots
+summary: Keep the opening of the reference ad untouched, with its own burnt-in text, up to its first product image, then switch to the brand's own product shots and an end card.
+when_to_use: >
+  Use it when the first seconds of the reference ad are a strong problem or hook whose burnt-in text is already compliant and
+  usable as it is, and the reference then moves to showing a product. Do not use it when the kept text contains a claim, a
+  competitor name, a logo or a price the brand cannot use (use text_hook or remake_long, which remove and rewrite it), or when
+  the reference footage has a watermark you cannot cut away.
+duration: {min: 12, max: 18}
+audio:
+  source: reference
+  notes: >
+    The sound of the reference runs under the kept opening and continues under the product shots. Fade it out over the end card.
+captions:
+  style: pill
+  y: 1000
+  size: 48
+  notes: >
+    The brand's own text imitates the look of the reference's burnt-in text so the switch is not noticed, same font family
+    (or the closest match), same shape and size, same position (measure it on a frame of the source, in pixels). It starts right
+    after the kept opening and stays on screen for the product shots. One text only, sentence case, first letter capital, one or
+    two matching emoji, no claim. The kept text is the reference's and is not touched.
+structure:
+  - slot: hook_kept
+    role: hook
+    purpose: Give the reference's own opening (problem plus its text) untouched.
+    count: 1
+    shot_duration: [3.0, 6.0]
+    footage: The reference ad from 0 s up to the first product image, cut exactly on the scene change. Do not remove its text. If the kept text is not usable, stop and switch to another recipe.
+    caption: None from us, the reference's burnt-in text stays as it is.
+  - slot: product
+    role: reveal
+    purpose: Move from the problem to the brand's solution with clean product and usage shots.
+    count: [3, 5]
+    shot_duration: [1.6, 2.0]
+    footage: First a product-only shot showing the product exactly as sold today (box on a table, current version), then usage shots (the product in real use, with its key feature visible) and a smile or a satisfied reaction. Product-only shots must be the current version.
+    caption: The brand's imitation text (pill, same position as the reference's text).
+    effects: Slow zoom from 1.00 to 1.04 over each shot.
+  - slot: end_card
+    role: cta
+    purpose: Close on the call to action.
+    count: 1
+    shot_duration: [3.0, 3.0]
+    footage: The brand's end card image with a slow zoom. Without an up-to-date end card image, compose one with the end_card tool.
+    caption: None, the image carries the call to action.
+rules:
+  - {id: total_duration, check: total_duration, params: {min: 12, max: 18}, severity: warn}
+  - {id: hook_kept_length, check: shot_duration, params: {label_prefix: hook_kept, min: 2.5, max: 8.0}, severity: warn}
+  - {id: product_shot_length, check: shot_duration, params: {label_prefix: product, min: 1.6, max: 2.0}, severity: warn}
+  - {id: product_shot_floor, check: shot_duration, params: {label_prefix: product, min: 1.0}, severity: fail}
+  - {id: caption_time, check: caption_min_on_screen, params: {min: 2.5}, severity: warn}
+  - {id: caption_number, check: caption_count, params: {min: 1, max: 2}, severity: warn}
+  - {id: safe_zone, check: caption_safe_zone, params: {top: 100, bottom: 1620}, severity: warn}
+  - {id: end_card, check: end_card_required, params: {label_prefix: end_card}, severity: fail}
+  - {id: caption_lines, check: max_caption_lines, params: {max: 3}, severity: warn}
+  - {id: banned_words, check: banned_words, severity: fail}
+checklist:
+  - The kept text was reviewed by a human as compliant on its own, with no claim, competitor name, logo or price, before editing.
+  - The cut is exactly on the scene change to the first product image, with no flash of the wrong frame.
+  - The brand's text matches the reference text in font family, shape, size and position, and does not collide with the kept text at any moment.
+  - Text never covers a face, eyes or mouth in the product and usage shots.
+  - The first product-only shot and every other product-only shot show the product exactly as sold today (current packaging, current version).
+  - Product shots last 1.6 to 2.0 seconds, none below 1 second, with a slow zoom only.
+  - The reference soundtrack does not jump at the cut and fades out over the end card.
+  - The end card is the last shot and its zoom does not shake.
+example:
+  version: 1
+  name: example_hook_plus_product
+  recipe: hook_plus_product
+  format: {width: 1080, height: 1920, fps: 30}
+  segments:
+    - {type: clip, source: footage/reference_ad.mp4, in: 0.0, out: 4.0, focus: [0.5, 0.45], label: hook_kept}
+    - {type: clip, source: footage/product_box_table.mp4, in: 12.2, out: 14.2, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: "product:1"}
+    - {type: clip, source: footage/creator_a_usage_1.mp4, in: 90.3, out: 92.3, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: "product:2"}
+    - {type: clip, source: footage/creator_a_usage_2.mp4, in: 104.0, out: 106.0, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: "product:3"}
+    - {type: clip, source: footage/creator_a_smile.mp4, in: 143.0, out: 145.0, focus: [0.5, 0.45], zoom: {from: 1.0, to: 1.04}, label: "product:4"}
+    - {type: image, source: brand/end_card.png, duration: 3.0, motion: zoom_in, background: blur, label: end_card}
+  overlays:
+    - {type: caption, style: pill, lines: ["My new favorite", "little habit ✨"], start: 4.2, end: 12.0, y: 1000, size: 48}
+  audio: {music: null, from_reference: footage/reference_ad.mp4, volume: 0.9, fade_in: 0.0, fade_out: 1.0}
+  output: {path: renders/example_hook_plus_product.mp4, quality: final}

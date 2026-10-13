@@ -1,0 +1,138 @@
+id: comment_reply
+name: Comment reply voice-over ("we read your comments")
+summary: A real objection from a comment is shown on screen and the brand answers it in voice-over, honestly, over one shot per sentence, ending on a product or end card and a last second and a half of music.
+when_to_use: >
+  Use it when the brand has a real comment that states a common objection (it does not work for me, it is a copy, it is
+  too good to be true, how long does it take, is it safe) and a validated voice-over script that answers it in 6 to 9 short
+  sentences (about 22 to 35 seconds). The voice is generated beforehand with the voice_generate tool, one sentence per
+  line, and its manifest gives the start and duration of every line. Do not use it when there is no real comment to quote,
+  when the answer would need a claim the brand cannot make, when the script speaks as a fake customer, when it needs two
+  different voices, or when a customer quote in it is not real and consented. Ask the compliance questions first.
+duration: {min: 22, max: 35}
+audio:
+  source: voice_over
+  notes: >
+    One voice for the whole episode, generated sentence by sentence before the storyboard is written (voice_generate), then
+    referenced through audio.voice with voice_offset 0. The voice speaks in the name of the brand ("we", "our customers"),
+    never as a fake customer. A licensed music bed plays under it, audible but below the voice (music_volume 0.32 to 0.38, a
+    value near 0.16 is inaudible), and it keeps playing for about 1.5 s after the last sentence, so the ad never ends on
+    silence and the voice is never cut. Normalise the voice on its own, never put loudness normalisation in a mix that is
+    trimmed with a duration.
+captions:
+  style: outline
+  y: 1300
+  size: 58
+  notes: >
+    The subtitles come from the voice with a voice_captions overlay (mode sentence, or chunks for fast lines), style outline,
+    y about 1300, size 58, so they always match the audio. Tags use the pill style at a small size, placed low on the frame,
+    never a heavy solid-colour block. The comment bubble is a separate overlay. Everything
+    sits on a free area of the shot (comment around y 880, subtitles and tags at the bottom), never on a face. The
+    subtitles fill the bottom zone and the tag must not collide with them, so check each one with caption_preview.
+structure:
+  - slot: objection
+    role: hook
+    purpose: Read the objection, with the real comment displayed from the first frames so the viewer sees who is being answered.
+    count: [1, 2]
+    shot_duration: [1.5, 4.0]
+    footage: One calm or striking shot related to the objection (the topic of the comment, a relevant setting), with a free area in the middle of the frame for the bubble. No face in the zone where the comment sits. If the objection is about public figures, a wide shot where the bubble hides no face.
+    caption: The comment overlay (one real comment, word for word, real reaction count, blurred avatar and name), from about 0.15 s to the end of the second voice line. Voice captions for the line.
+  - slot: concede
+    role: problem
+    purpose: Give the objection partly right, honestly, so the brand sounds credible before it reframes.
+    count: [1, 2]
+    shot_duration: [1.5, 4.0]
+    footage: A neutral or empathetic shot of a person in daily life, not yet the product in its best light. A different profile from the first shot when the voice is general.
+    caption: Voice captions. The comment stays on screen until the end of this line.
+  - slot: reframe
+    role: punch
+    purpose: Reframe the question, what actually matters, without promising a result.
+    count: [1, 2]
+    shot_duration: [1.5, 4.0]
+    footage: Usage or routine shots that show the gesture and the setting. When the line lasts more than about 3 s, use two shots, never the same shot twice.
+    caption: Voice captions.
+  - slot: mechanism
+    role: mechanism
+    purpose: Explain the simple mechanism in plain words, what the product does and how it is used.
+    count: [1, 2]
+    shot_duration: [1.5, 4.0]
+    footage: Product in use, feature switched on, the gesture readable. Product-only shots show the product exactly as sold today (current version, checked one by one on the contact sheet).
+    caption: Voice captions.
+    effects: Slow zoom from 1.00 to 1.04 on product-only shots.
+  - slot: quote
+    role: proof
+    purpose: Bring a real customer quote, read by the brand voice and introduced as such ("one of our customers wrote to us").
+    count: [1, 2]
+    shot_duration: [1.5, 4.0]
+    footage: Shots of real customers or creators with written consent, varied profiles under the single voice. Never a face that suggests the quote belongs to that person unless it does.
+    caption: Voice captions, plus one sober small tag such as "A customer wrote to us" so the quote is clearly marked as a quote.
+  - slot: reassurance
+    role: proof
+    purpose: Reassure with proof the viewer can check, the official before and after of the brand, the reviews page, a person showing reviews.
+    count: [1, 2]
+    shot_duration: [1.5, 4.0]
+    footage: Official visuals from the brand (before and after pair confirmed authentic, reviews page, screen of reviews). Stills in the middle of the video are static, not zoomed.
+    caption: Voice captions.
+  - slot: end_card
+    role: cta
+    purpose: Make the offer and close on a product shot or the brand end card, with 1.5 s of music after the last sentence.
+    count: 1
+    shot_duration: [3.5, 6.0]
+    footage: A clean product card or end card (current version, real photo of the product and the offer the brand confirmed). Its length is the last voice line plus 1.5 s. Without an up-to-date end card image, compose one with the end_card tool.
+    caption: Voice captions for the last line, the card itself carries the call to action. No large solid-colour block of text.
+rules:
+  - {id: total_duration, check: total_duration, params: {min: 22, max: 35}, severity: warn}
+  - {id: shot_length, check: shot_duration, params: {min: 0.6, max: 5.0}, severity: warn}
+  - {id: shot_floor, check: shot_duration, params: {min: 0.6}, severity: fail}  # quick inserts (0.6-0.8 s) open strong objections
+  - {id: end_card_length, check: shot_duration, params: {label_prefix: end_card, min: 3.5, max: 6.0}, severity: warn}
+  - {id: label_time, check: caption_min_on_screen, params: {min: 2.0}, severity: warn}
+  - {id: label_number, check: caption_count, params: {min: 0, max: 3}, severity: warn}
+  - {id: safe_zone, check: caption_safe_zone, params: {top: 100, bottom: 1620}, severity: warn}
+  - {id: end_card, check: end_card_required, params: {label_prefix: end_card}, severity: fail}
+  - {id: caption_lines, check: max_caption_lines, params: {max: 3}, severity: warn}
+  - {id: banned_words, check: banned_words, severity: fail}
+checklist:
+  - The comment is real, quoted word for word with its real reaction count, there is only one comment in the video, and the human confirmed where it comes from.
+  - The avatar and the name are blurred (done by the tool), no invented author, and the bubble covers no face, eyes or mouth.
+  - The customer quote spoken in the voice is real, quoted faithfully, and its author gave written consent for paid advertising.
+  - The voice speaks in the name of the brand, never as a fake customer, and one single voice is used for the whole episode.
+  - Every voice line has the status ok in the manifest (otherwise regenerate the line), and each line was checked by ear or by a transcript for mispronunciations, repeated words and swallowed words.
+  - The shot durations match the voice line durations of the manifest, one shot per sentence (two when a sentence lasts more than about 3 s), and no shot appears twice.
+  - No claim about a named competitor or any statement that cannot be verified, nothing medical, nothing promised to everyone, and the offer and guarantee use the brand's real terms.
+  - The music stays audible under the voice (music_volume 0.32 to 0.38), continues about 1.5 s after the last sentence, and the voice is never cut.
+  - The end card is the last segment, is a clean product card with the confirmed offer, and there is no large solid-colour block of text.
+  - Labels are sober (white card, no heavy colour block) and do not collide with the subtitles. Subtitles come from voice_captions and stay in the safe zone.
+  - Every product-only shot shows the product as sold today, checked one by one on the contact sheet.
+  - Shots from different sources match in colour (HDR clips tone-mapped, no red or dark shot next to a normal one), and a still image in the middle is static.
+example:
+  version: 1
+  name: example_comment_reply
+  recipe: comment_reply
+  format: {width: 1080, height: 1920, fps: 30}
+  # Imaginary manifest voice/episode_1/manifest.json, 7 lines, one sentence each, contiguous starts.
+  # voice lines: 3.1, 2.8, 3.4, 3.0, 3.6, 2.9, 2.6 (total 21.4 s)
+  # line starts:  0.0, 3.1, 5.9, 9.3, 12.3, 15.9, 18.8 (last line ends at 21.4 s)
+  # line 1 objection:    "Someone wrote to us that products like ours never last."
+  # line 2 concede:      "And honestly, a lot of what is sold really does not last."
+  # line 3 reframe:      "What makes the difference is a few good habits, not a miracle."
+  # line 4 mechanism:    "A few minutes a day, at home, no special setup."
+  # line 5 quote:        "One of our customers wrote to us: I look forward to these five minutes every evening."
+  # line 6 reassurance:  "You can read every review on our page before you decide."
+  # line 7 offer and end: "Try it, and if it is not for you, we refund you."
+  # Timeline: lines 3 and 5 last more than 3 s, so they get two shots each. The end card lasts 2.6 + 1.5 = 4.1 s.
+  # Total = 21.4 + 1.5 = 22.9 s = 3.1 + 2.8 + 1.7 + 1.7 + 3.0 + 1.8 + 1.8 + 2.9 + 4.1
+  segments:
+    - {type: clip, source: footage/creator_a_daily.mp4, in: 2.0, out: 5.1, focus: [0.5, 0.35], label: objection}
+    - {type: clip, source: footage/creator_b_kitchen.mp4, in: 1.0, out: 3.8, focus: [0.5, 0.4], label: concede}
+    - {type: clip, source: footage/creator_c_routine_1.mp4, in: 4.0, out: 5.7, focus: [0.5, 0.45], label: "reframe:1"}
+    - {type: clip, source: footage/creator_a_routine_2.mp4, in: 6.5, out: 8.2, focus: [0.5, 0.45], label: "reframe:2"}
+    - {type: clip, source: footage/product_in_use.mp4, in: 3.0, out: 6.0, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: mechanism}
+    - {type: clip, source: footage/creator_d_evening_1.mp4, in: 0.5, out: 2.3, focus: [0.5, 0.4], label: "quote:1"}
+    - {type: clip, source: footage/creator_d_evening_2.mp4, in: 5.0, out: 6.8, focus: [0.5, 0.4], label: "quote:2"}
+    - {type: clip, source: footage/creator_b_reviews_screen.mp4, in: 0.0, out: 2.9, focus: [0.5, 0.5], label: reassurance}
+    - {type: image, source: brand/end_card.png, duration: 4.1, motion: zoom_in, background: blur, label: end_card}
+  overlays:
+    - {type: comment, look: facebook, text: "Nothing like this ever lasts. Do not waste your money.", reactions: 22, start: 0.15, end: 5.9, y: 880}
+    - {type: voice_captions, mode: sentence, style: outline, y: 1300, size: 58}
+    - {type: caption, style: pill, lines: ["A customer wrote to us"], start: 12.3, end: 15.9, y: 1490, size: 40}
+  audio: {voice: voice/episode_1/manifest.json, voice_offset: 0.0, music: music/track.m4a, music_volume: 0.35, fade_in: 0.8, fade_out: 1.5}
+  output: {path: renders/example_comment_reply.mp4, quality: final}

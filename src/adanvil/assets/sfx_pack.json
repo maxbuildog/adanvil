@@ -1,0 +1,166 @@
+{
+  "sounds": [
+    {
+      "name": "whoosh_short",
+      "description": "Short air whoosh (0.4 s) for a cut or a quick move.",
+      "generator": "whoosh_short"
+    },
+    {
+      "name": "whoosh_long",
+      "description": "Long air whoosh (1 s) for a slow transition or a pan.",
+      "generator": "whoosh_long"
+    },
+    {
+      "name": "swoosh",
+      "description": "Bright downward swoosh (0.6 s) for an element sliding in.",
+      "generator": "swoosh"
+    },
+    {
+      "name": "swipe",
+      "description": "Fast high swipe (0.3 s) for a flick or a screen swipe.",
+      "generator": "swipe"
+    },
+    {
+      "name": "pop",
+      "description": "Soft bubble pop (0.15 s) for a caption or an element appearing.",
+      "generator": "pop"
+    },
+    {
+      "name": "click",
+      "description": "Tiny interface click (under 0.1 s).",
+      "generator": "click",
+      "download": {
+        "file": "kenney_interface-sounds.zip",
+        "url": "https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip",
+        "sha1": "374a0ba3ffa61f62fd58102507065c417eef5174",
+        "size_bytes": 834536,
+        "pack": "Interface Sounds (Kenney)",
+        "page": "https://kenney.nl/assets/interface-sounds",
+        "author": "Kenney Vleugels (kenney.nl)",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "member": "Audio/click_003.ogg"
+      }
+    },
+    {
+      "name": "tap",
+      "description": "Soft tick or tap (under 0.15 s) for a finger or a button.",
+      "generator": "tap",
+      "download": {
+        "file": "kenney_interface-sounds.zip",
+        "url": "https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip",
+        "sha1": "374a0ba3ffa61f62fd58102507065c417eef5174",
+        "size_bytes": 834536,
+        "pack": "Interface Sounds (Kenney)",
+        "page": "https://kenney.nl/assets/interface-sounds",
+        "author": "Kenney Vleugels (kenney.nl)",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "member": "Audio/tick_004.ogg"
+      }
+    },
+    {
+      "name": "ding",
+      "description": "Single bell ding (0.3 s) for a price, a result or a point scored.",
+      "generator": "ding",
+      "download": {
+        "file": "kenney_interface-sounds.zip",
+        "url": "https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip",
+        "sha1": "374a0ba3ffa61f62fd58102507065c417eef5174",
+        "size_bytes": 834536,
+        "pack": "Interface Sounds (Kenney)",
+        "page": "https://kenney.nl/assets/interface-sounds",
+        "author": "Kenney Vleugels (kenney.nl)",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "member": "Audio/glass_001.ogg"
+      }
+    },
+    {
+      "name": "chime",
+      "description": "Bright two-tone chime (0.5 s) for a success or a reveal.",
+      "generator": "chime",
+      "download": {
+        "file": "kenney_interface-sounds.zip",
+        "url": "https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip",
+        "sha1": "374a0ba3ffa61f62fd58102507065c417eef5174",
+        "size_bytes": 834536,
+        "pack": "Interface Sounds (Kenney)",
+        "page": "https://kenney.nl/assets/interface-sounds",
+        "author": "Kenney Vleugels (kenney.nl)",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "member": "Audio/confirmation_002.ogg"
+      }
+    },
+    {
+      "name": "notification",
+      "description": "Short bright notification blip (0.3 s).",
+      "generator": "notification",
+      "download": {
+        "file": "kenney_interface-sounds.zip",
+        "url": "https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip",
+        "sha1": "374a0ba3ffa61f62fd58102507065c417eef5174",
+        "size_bytes": 834536,
+        "pack": "Interface Sounds (Kenney)",
+        "page": "https://kenney.nl/assets/interface-sounds",
+        "author": "Kenney Vleugels (kenney.nl)",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "member": "Audio/confirmation_003.ogg"
+      }
+    },
+    {
+      "name": "cash_register",
+      "description": "Cash register: drawer then a double bell (1.2 s) for a price or a sale.",
+      "generator": "cash_register"
+    },
+    {
+      "name": "camera_shutter",
+      "description": "Camera shutter, two clicks (0.2 s) for a photo or a before/after.",
+      "generator": "camera_shutter"
+    },
+    {
+      "name": "record_scratch",
+      "description": "Record scratch (0.6 s) for a stop, a twist or a mistake.",
+      "generator": "record_scratch"
+    },
+    {
+      "name": "typing",
+      "description": "Keyboard typing, nine keys (1.3 s) under typed text.",
+      "generator": "typing"
+    },
+    {
+      "name": "riser_1s",
+      "description": "One-second riser, a rising sweep that stops at its peak: place it so its end meets the reveal (at = reveal time minus 1).",
+      "generator": "riser_1s"
+    },
+    {
+      "name": "riser_2s",
+      "description": "Two-second riser for a longer build-up (at = reveal time minus 2).",
+      "generator": "riser_2s"
+    },
+    {
+      "name": "impact",
+      "description": "Deep punchy impact (0.65 s) for a hit on a reveal or a hard cut.",
+      "generator": "impact",
+      "download": {
+        "file": "kenney_impact-sounds.zip",
+        "url": "https://kenney.nl/media/pages/assets/impact-sounds/87b4ddecda-1677589768/kenney_impact-sounds.zip",
+        "sha1": "a2c54979c9d8f43e804eea667c1bca0407bf4022",
+        "size_bytes": 800850,
+        "pack": "Impact Sounds (Kenney)",
+        "page": "https://kenney.nl/assets/impact-sounds",
+        "author": "Kenney Vleugels (kenney.nl)",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "member": "Audio/impactPunch_heavy_000.ogg"
+      }
+    },
+    {
+      "name": "boom",
+      "description": "Sub boom with a long tail (1.4 s) for a big reveal.",
+      "generator": "boom"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "products": [
+    {
+      "title": "Euro Runner",
+      "handle": "euro-runner",
+      "variants": [
+        {"price": "74.00", "compare_at_price": "110.00"}
+      ]
+    }
+  ]
+}

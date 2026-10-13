@@ -1,0 +1,25 @@
+{
+  "products": [
+    {
+      "title": "Morning Blend",
+      "handle": "morning-blend",
+      "body_html": "<p>A smooth <strong>medium roast</strong> for a calm start to the day.</p>",
+      "tags": ["hero", "coffee"],
+      "images": [{"src": "//cdn.example.test/blend.jpg"}],
+      "variants": [
+        {"price": "14.90", "compare_at_price": "18.90"},
+        {"price": "26.90", "compare_at_price": "32.90"}
+      ]
+    },
+    {
+      "title": "Cold Brew Bags",
+      "handle": "cold-brew-bags",
+      "body_html": "<p>Cold brew bags for every warm afternoon.</p>",
+      "tags": "cold brew, afternoon",
+      "images": [{"src": "/assets/coldbrew.jpg"}],
+      "variants": [
+        {"price": "9.50", "compare_at_price": "12.00"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+id: voiceover_ad
+name: Voiced brand ad (narrator over usage shots)
+summary: A single brand voice (a narrator, never a fake customer) carries the message over one shot per sentence of product use, with subtitles synced to the voice and a licensed music bed, from a recognised problem to the offer and a closing end card.
+when_to_use: >
+  Use it to rebuild a spoken competitor ad (UGC voice or narration) without a fake testimonial, because the voice speaks in
+  the name of the brand, or to start from an idea when there is no reference at all. The script has 7 to 10 short sentences,
+  about 24 to 40 seconds, one idea each, written beforehand and generated with the voice_generate tool, so its manifest gives
+  the start and duration of every line. The footage is usage shots (UGC, hands, product) that illustrate each sentence. Do not
+  use it to answer a real comment (use comment_reply), when the script needs a claim the brand cannot make, when it needs two
+  voices, or when a customer quote in it is not real and consented. Ask the compliance questions first.
+duration: {min: 22, max: 42}
+audio:
+  source: voice_over
+  notes: >
+    One voice for the whole episode, generated sentence by sentence before the storyboard is written (voice_generate), then
+    referenced through audio.voice with voice_offset 0. The voice speaks in the name of the brand ("we", or "you" for the
+    viewer), never as a fake customer. A licensed music bed plays under it, audible but below the voice (music_volume 0.32 to
+    0.38, a value near 0.16 is inaudible), and it keeps playing for about 1.5 s after the last sentence, so the ad never ends
+    on silence and the voice is never cut. Normalise the voice on its own, never put loudness normalisation in a mix that is
+    trimmed with a duration.
+captions:
+  style: outline
+  y: 1290
+  size: 56
+  notes: >
+    The subtitles come from the voice with a voice_captions overlay, mode chunks, max_words 3, case upper, style outline
+    (white text, black contour), y about 1290, size 56, so they always match the audio. Leave the last sentence out of lines
+    when the end card already writes the call to action, so the same words never appear twice. A price or a number read by
+    the voice is often misheard by the speech check, so write the offer as a short sentence, leave it out of lines and show
+    the real prices on screen in a box caption. The guarantee goes in a box or a pill, readable for the whole last line. Boxes
+    and pills sit above the subtitles or replace them on their own line, never on a face, and each one is checked with
+    caption_preview.
+structure:
+  - slot: hook
+    role: hook
+    purpose: The problem the target recognises at once, one striking sentence that keeps the contrast of the reference (what they do versus what they get).
+    count: [1, 2]
+    shot_duration: [1.5, 3.5]
+    footage: A shot that SHOWS the problem or the target (face to camera, a messy kitchen, the gesture of the problem), strong from the very first second. Two shots when the line lasts more than about 3 s.
+    caption: Voice captions from 0 s.
+  - slot: agitation
+    role: agitation
+    purpose: What they already tried and why it frustrated them, without naming a competitor or a number.
+    count: [1, 1]
+    shot_duration: [1.5, 3.5]
+    footage: A neutral or slightly tired daily-life shot, a different setting from the hook, not yet the product in its best light.
+    caption: Voice captions.
+  - slot: reveal
+    role: reveal
+    purpose: The product appears, exactly as it is sold today.
+    count: [1, 1]
+    shot_duration: [1.5, 3.5]
+    footage: A clean shot of the product or the unboxing, current version, checked on the contact sheet.
+    caption: Voice captions.
+    effects: Slow zoom from 1.00 to 1.04 on a product-only shot.
+  - slot: mechanism
+    role: mechanism
+    purpose: How it works, simple, in one or two sentences, with no medical wording.
+    count: [1, 2]
+    shot_duration: [1.5, 3.5]
+    footage: The product in use with the feature switched on, the gesture readable, hands or face. When the line lasts more than about 3 s, use two different shots.
+    caption: Voice captions.
+  - slot: ease
+    role: demo
+    purpose: How easy it is, at home, a few minutes, no effort.
+    count: [1, 2]
+    shot_duration: [1.5, 3.5]
+    footage: Calm home shots (sofa, bathroom, kitchen), use in a relaxed setting. Two shots when the line lasts more than about 3 s, never the same shot twice.
+    caption: Voice captions.
+  - slot: payoff
+    role: payoff
+    purpose: The benefit in terms of appearance and feel, said with caution, never a result or a promise.
+    count: [1, 1]
+    shot_duration: [1.5, 3.5]
+    footage: A smiling person, a relaxed face or a satisfied gesture, bright and natural, a different setting from the usage shots.
+    caption: Voice captions.
+  - slot: offer
+    role: offer
+    purpose: The real offer in one SHORT sentence. The prices are shown on screen, not read in full by the voice.
+    count: [1, 1]
+    shot_duration: [1.5, 3.5]
+    footage: A usage or product shot with a free area for the offer box, in the lower half and off the face.
+    caption: Voice captions are left out for this line, a box caption carries the real prices and the offer, copied from the sales page.
+  - slot: end_card
+    role: cta
+    purpose: The guarantee and the call to action, the last sentence, then 1.5 s of music.
+    count: 1
+    shot_duration: [3.5, 6.0]
+    footage: A clean product shot or the brand end card (current version, real offer). Its length is the last voice line plus 1.5 s.
+    caption: The call to action is written on the card, the guarantee goes in a readable box or pill, the last sentence is not subtitled twice.
+rules:
+  - {id: total_duration, check: total_duration, params: {min: 22, max: 42}, severity: warn}
+  - {id: shot_length, check: shot_duration, params: {min: 0.6, max: 5.0}, severity: warn}
+  - {id: shot_floor, check: shot_duration, params: {min: 0.6}, severity: fail}
+  - {id: end_card_length, check: shot_duration, params: {label_prefix: end_card, min: 3.5, max: 6.0}, severity: warn}
+  - {id: caption_time, check: caption_min_on_screen, params: {min: 1.5}, severity: warn}
+  - {id: caption_number, check: caption_count, params: {min: 0, max: 4}, severity: warn}
+  - {id: safe_zone, check: caption_safe_zone, params: {top: 100, bottom: 1620}, severity: warn}
+  - {id: end_card, check: end_card_required, params: {label_prefix: end_card}, severity: fail}
+  - {id: caption_lines, check: max_caption_lines, params: {max: 3}, severity: warn}
+  - {id: banned_words, check: banned_words, severity: fail}
+checklist:
+  - The voice speaks in the name of the brand (narrator), never as a fake customer, and one single voice is used for the whole episode.
+  - Every voice line has the status ok in the manifest, and no line stays suspect without a human check of its transcript (a number read aloud can be a false alarm, an actual misreading is not).
+  - The hook shows the problem or the target from the first second, and keeps the contrast of the reference without any claim, diagnosis or promise.
+  - Each shot illustrates ITS sentence, one shot per sentence (two when it lasts more than about 3 s), and no shot appears twice.
+  - The prices, the offer and the guarantee are identical to the sales page, written on screen in a readable box or pill, and the voice does not read the prices in full.
+  - No banned word, no claim about a named competitor, nothing medical, nothing promised to everyone, and no result with a number of days.
+  - The music stays audible under the voice (music_volume 0.32 to 0.38) until the end and continues about 1.5 s after the last sentence, and the voice is never cut.
+  - The end card is the last segment, shows the current version of the product and the call to action, and the last sentence is not subtitled twice.
+  - Every product-only shot shows the product as sold today, checked one by one on the contact sheet.
+  - Subtitles come from voice_captions (chunks of 2 to 3 words, upper case, outline), stay in the safe zone and never cover a face, eyes or mouth.
+  - Every person filmed gave written consent for paid advertising, and the footage has no watermark, no burnt-in text and no competitor material.
+  - Shots from different sources match in colour (HDR clips tone-mapped, no red or dark shot next to a normal one), and a still image in the middle is static.
+example:
+  version: 1
+  name: example_voiceover_ad
+  recipe: voiceover_ad
+  format: {width: 1080, height: 1920, fps: 30}
+  # Imaginary manifest voice/episode/manifest.json, 8 lines, one sentence each, contiguous starts.
+  # voice lines: 3.2, 2.8, 2.6, 3.6, 3.4, 3.0, 2.4, 3.0 (total 24.0 s)
+  # line starts:  0.0, 3.2, 6.0, 8.6, 12.2, 15.6, 18.6, 21.0 (last line ends at 24.0 s)
+  # line 1 hook:       "You try hard every day, and yet your mornings never feel calm."
+  # line 2 agitation:  "You have tried so much already, and the routine only got longer."
+  # line 3 reveal:     "So we made something simpler, and here it is."
+  # line 4 mechanism:  "It brings the three steps together in one single tool."
+  # line 5 ease:       "You use it at home, on the sofa, in just a few minutes."
+  # line 6 payoff:     "And your day simply feels lighter and more relaxed."
+  # line 7 offer:      "Today there is a special offer."
+  # line 8 end:        "Satisfaction guaranteed, so tap Learn more."
+  # Timeline: lines 1, 4 and 5 last more than 3 s, so they get two shots each. The end card lasts 3.0 + 1.5 = 4.5 s.
+  # Total = 24.0 + 1.5 = 25.5 s = 1.6 + 1.6 + 2.8 + 2.6 + 1.8 + 1.8 + 1.7 + 1.7 + 3.0 + 2.4 + 4.5
+  segments:
+    - {type: clip, source: footage/creator_a_home.mp4, in: 1.0, out: 2.6, focus: [0.5, 0.35], label: "hook:1"}
+    - {type: clip, source: footage/creator_a_to_camera.mp4, in: 4.0, out: 5.6, focus: [0.5, 0.35], label: "hook:2"}
+    - {type: clip, source: footage/creator_b_morning.mp4, in: 2.0, out: 4.8, focus: [0.5, 0.4], label: agitation}
+    - {type: clip, source: footage/product_box_table.mp4, in: 3.0, out: 5.6, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: reveal}
+    - {type: clip, source: footage/product_feature_on.mp4, in: 1.0, out: 2.8, focus: [0.5, 0.5], label: "mechanism:1"}
+    - {type: clip, source: footage/creator_a_usage_2.mp4, in: 6.0, out: 7.8, focus: [0.5, 0.45], label: "mechanism:2"}
+    - {type: clip, source: footage/creator_c_sofa_1.mp4, in: 0.5, out: 2.2, focus: [0.5, 0.45], label: "ease:1"}
+    - {type: clip, source: footage/creator_c_sofa_2.mp4, in: 5.0, out: 6.7, focus: [0.5, 0.45], label: "ease:2"}
+    - {type: clip, source: footage/creator_b_smile.mp4, in: 1.5, out: 4.5, focus: [0.5, 0.35], label: payoff}
+    - {type: clip, source: footage/creator_a_usage_3.mp4, in: 2.0, out: 4.4, focus: [0.5, 0.35], label: offer}
+    - {type: clip, source: footage/product_with_box.mp4, in: 0.0, out: 4.5, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: end_card}
+  overlays:
+    - {type: voice_captions, mode: chunks, max_words: 3, case: upper, style: outline, y: 1290, size: 56, lines: [0, 1, 2, 3, 4, 5]}
+    - {type: caption, style: box, lines: ["Offer price instead of regular price", "free delivery if confirmed"], start: 18.7, end: 21.0, y: 1100, size: 46}
+    - {type: caption, style: pill, lines: ["Satisfaction guaranteed", "Tap Learn more"], start: 21.0, end: 25.5, y: 1290, size: 44}
+  audio: {voice: voice/episode/manifest.json, voice_offset: 0.0, music: music/track.m4a, music_volume: 0.35, fade_in: 0.8, fade_out: 1.5}
+  output: {path: renders/example_voiceover_ad.mp4, quality: final}

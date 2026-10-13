@@ -1,0 +1,101 @@
+id: before_after
+name: Before/after short
+summary: A short ad that shows a before and an after, then a fast sequence of product-only shots and a call to action.
+when_to_use: >
+  Use it when the reference is a short before/after ad (10 to 25 seconds) or when the brand holds an authentic before/after pair
+  of the same person, same framing and same lighting. Do not use it when the pair comes from different people, was generated or
+  retouched, was obtained with another product or method, or when nobody on the brand side can confirm where it comes from.
+  Ask the compliance questions first.
+  When both pictures are true, the preferred layout is one reveal segment with two real pictures (the same person, the
+  same framing and light, unretouched, with consent): a divider sweeps the before picture away to show the after
+  picture, 3 to 3.5 s with the default timing (0.8 s on the before, a 0.9 s sweep, then the after), label it before.
+  The second choice is one split screen segment (side_by_side for portrait footage, labels such as BEFORE and AFTER,
+  2.5 to 3.5 s, label it before) for a side by side comparison. Both devices need two different pictures: two crops of
+  the same take show no difference (the validation warns split_same_source). Cut the two shots in sequence only when
+  the footage does not fit either.
+duration: {min: 14, max: 20}
+audio:
+  source: either
+  notes: >
+    Reuse the music of the reference ad when its licence allows it, otherwise a licensed track. There is no voice, so the
+    captions tell the story.
+captions:
+  style: pill
+  y: 330
+  size: 60
+  notes: >
+    Three captions in order: the hook (an invitation such as "It's your sign to try it"), one line describing what the product
+    does or how to use it, and the guarantee or reassurance line (only if the brand has a real one). Sentence case, two lines each, about 3 seconds on screen. Over shots with
+    a face, use the bottom of the frame (y 1250 to 1500) instead of the top so the text stays off the eyes.
+structure:
+  - slot: before
+    role: problem
+    purpose: Show the starting point honestly, with the hook caption over it.
+    count: 1
+    shot_duration: [2.0, 3.0]
+    footage: The before shot from the authentic pair, cropped to the same framing as the after shot. Cut the first frames if the source has letterbox bars or a stabilisation crop.
+    caption: The hook (default style), placed where it does not cover the area being compared.
+    effects: Or, preferred when both pictures are true, one reveal segment (type reveal, before and after pictures, direction left_to_right, hold_before 0.8, sweep 0.9, labels BEFORE and AFTER, one focus for both sides so the faces line up, duration 3 to 3.5) that replaces the before and after slots; label it before. Second choice, one split segment (type split, layout side_by_side, panels before and after, labels BEFORE and AFTER, same focus on both panels) that replaces them the same way. remove_text if the reference hook is burnt in (measure the box on a source frame and make the new caption at least as large as the erased area).
+  - slot: after
+    role: payoff
+    purpose: Show the result, in the same framing, angle and light as the before shot.
+    count: 1
+    shot_duration: [2.0, 3.0]
+    footage: The matching after shot. Same person, same camera distance. No caption is required, the contrast does the work.
+    caption: None, or a short line at the bottom of the frame.
+  - slot: product
+    role: reveal
+    purpose: Reveal the product and how it is used, in quick product-only shots.
+    count: [3, 4]
+    shot_duration: [1.6, 2.0]
+    footage: Product-only shots showing the product exactly as sold today (box on a table, taking it out of the box, the key feature in action, the product on its stand). Avoid shots without a clear subject and any older version.
+    caption: One line on what it does or how to use it, then the guarantee or reassurance line (if the brand has one) on the last shots (default style).
+    effects: Slow zoom from 1.00 to 1.04 over each shot.
+  - slot: end_card
+    role: cta
+    purpose: Close on the call to action.
+    count: 1
+    shot_duration: [3.0, 3.0]
+    footage: The brand's end card image with a slow zoom. Check that any press or endorsement mention on it is confirmed. Without an up-to-date end card image, compose one with the end_card tool.
+    caption: None, the image carries the call to action.
+rules:
+  - {id: total_duration, check: total_duration, params: {min: 14, max: 20}, severity: warn}
+  - {id: before_length, check: shot_duration, params: {label_prefix: before, min: 1.5, max: 3.5}, severity: warn}
+  - {id: after_length, check: shot_duration, params: {label_prefix: after, min: 1.5, max: 3.5}, severity: warn}
+  - {id: product_shot_length, check: shot_duration, params: {label_prefix: product, min: 1.6, max: 2.0}, severity: warn}
+  - {id: product_shot_floor, check: shot_duration, params: {label_prefix: product, min: 1.0}, severity: fail}
+  - {id: caption_time, check: caption_min_on_screen, params: {min: 2.5}, severity: warn}
+  - {id: caption_number, check: caption_count, params: {min: 2, max: 4}, severity: warn}
+  - {id: safe_zone, check: caption_safe_zone, params: {top: 100, bottom: 1620}, severity: warn}
+  - {id: end_card, check: end_card_required, params: {label_prefix: end_card}, severity: fail}
+  - {id: caption_lines, check: max_caption_lines, params: {max: 3}, severity: warn}
+  - {id: banned_words, check: banned_words, severity: fail}
+checklist:
+  - The before and after shots show the same person, with the same framing, angle and lighting, and the authenticity was confirmed by the human before editing.
+  - With a reveal or a split, the two sides are two different real pictures (not two crops of one take), the difference is visible at a glance on the frame at mid-sweep, and the after picture stays on screen at least 0.6 s.
+  - The result was obtained with the advertised product, confirmed by the human, and the caption never promises the result to everyone.
+  - Text never covers a face, eyes or mouth, or the area that the before/after compares.
+  - Any burnt-in text of the reference is fully gone (check full-resolution crops at three instants) and the new caption covers at least the erased area.
+  - Every product-only shot shows the product as sold today, checked one by one on the contact sheet.
+  - The product shots last 1.6 to 2.0 seconds, none below 1 second, and the ad does not feel frantic.
+  - Wording describes the experience and the features, never a medical outcome, and any guarantee line matches the brand's real terms.
+  - The end card is the last shot, does not shake during its zoom and its mentions (press, endorsements) are confirmed.
+example:
+  version: 1
+  name: example_before_after
+  recipe: before_after
+  format: {width: 1080, height: 1920, fps: 30}
+  segments:
+    - {type: clip, source: footage/creator_a_before.mp4, in: 1.0, out: 4.0, focus: [0.5, 0.4], remove_text: {method: mask, box: [60, 1020, 1020, 1175], extra_boxes: []}, label: before}
+    - {type: clip, source: footage/creator_a_after.mp4, in: 0.5, out: 3.5, focus: [0.5, 0.4], label: after}
+    - {type: clip, source: footage/product_box_table.mp4, in: 12.0, out: 13.8, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: "product:1"}
+    - {type: clip, source: footage/product_unboxing.mp4, in: 0.0, out: 1.8, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: "product:2"}
+    - {type: clip, source: footage/product_feature_on.mp4, in: 5.0, out: 6.8, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: "product:3"}
+    - {type: clip, source: footage/product_on_stand.mp4, in: 2.0, out: 3.8, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: "product:4"}
+    - {type: image, source: brand/end_card.png, duration: 3.0, motion: zoom_in, background: blur, label: end_card}
+  overlays:
+    - {type: caption, style: pill, lines: ["It's your sign", "to try it today"], start: 0.0, end: 3.0, y: 1300, size: 60}
+    - {type: caption, style: pill, lines: ["Five minutes a day,", "that is all it takes."], start: 6.4, end: 9.4, y: 330, size: 60}
+    - {type: caption, style: pill, lines: ["Not happy? Get your", "money back."], start: 10.0, end: 13.2, y: 330, size: 60}
+  audio: {music: music/track.m4a, from_reference: null, volume: 0.8, fade_in: 0.2, fade_out: 1.0}
+  output: {path: renders/example_before_after.mp4, quality: final}

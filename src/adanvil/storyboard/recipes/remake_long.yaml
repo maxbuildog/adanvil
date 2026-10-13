@@ -1,0 +1,134 @@
+id: remake_long
+name: Long remake of a reference ad
+summary: Keep the opening of a long voiced reference ad (hook, myth, mechanism) and rebuild everything after it with the brand's own footage, in the same story order.
+when_to_use: >
+  Use it when the reference is a long ad (roughly 35 to 60 seconds) whose script already works (hook, myth, explanation,
+  demonstration, reassurance) and the brand has enough footage from several creators, plus clean product shots, to rebuild the
+  second half. Do not use it when the reference is short or has no voice (prefer text_hook or meme_text), when the reference
+  voice makes claims the brand cannot make and a music-only version would lose the message, or when the brand has fewer than
+  about ten usable clips.
+duration: {min: 40, max: 55}
+audio:
+  source: reference
+  notes: >
+    The reference soundtrack (voice and music) runs under the whole ad and the shots are cut to its phrases. Read every
+    sentence of the voice against the brand's compliance rules first. If it says something the brand cannot say, switch to
+    music only and let the captions carry the message.
+captions:
+  style: pill
+  y: 330
+  size: 60
+  notes: >
+    Captions carry the beats the voice does not (price anchor, reassurance, guarantee) and never repeat the voice word for
+    word. Sentence case, two lines per caption, about 3 seconds on screen each. On shots where a face fills the frame, move
+    the caption to the bottom (y 1250 to 1500). An optional one-word myth stamp over the kept opening can use the outline
+    style, large, at the bottom of the frame.
+structure:
+  - slot: hook
+    role: hook
+    purpose: Give the viewer the reference's own hook, the myth it busts and the mechanism explanation, so the story starts identically.
+    count: [2, 4]
+    shot_duration: [3.0, 8.0]
+    footage: The first seconds of the reference ad, cut on its scene changes. Drop anything that names a competitor, shows a logo or watermark, or illustrates a claim the brand cannot make.
+    caption: Optional myth stamp or one hook line (outline style), only if the burnt-in text you removed carried the hook.
+    effects: remove_text on every kept shot that has burnt-in text (mask when the text is fixed, delogo on a measured box otherwise, crop_out when the text sits at an edge).
+  - slot: price
+    role: agitation
+    purpose: Anchor the value by evoking what the usual alternative costs (an agency, a clinic, a professional service, a daily coffee run), so the product feels reasonable.
+    count: [1, 2]
+    shot_duration: [2.0, 2.5]
+    footage: Neutral shots that evoke the professional alternative (a waiting room, an appointment, a receipt), or a creator talking to camera. Avoid competitor names and any price you cannot source.
+    caption: One caption stating the typical cost of the alternative, only with a figure the brand can back up.
+  - slot: product
+    role: reveal
+    purpose: Reveal the product for the first time, clean and desirable.
+    count: 1
+    shot_duration: [1.6, 2.0]
+    footage: A product-only shot showing the product exactly as sold today (current packaging, current version), for example a box on a table or a hand taking it out of the box. Avoid old versions and cluttered backgrounds.
+    caption: None, or a very short name-the-product caption in the default style.
+    effects: Slow zoom from 1.00 to 1.04 (no more).
+  - slot: usage
+    role: demo
+    purpose: Show the product being used on the main area of interest, from several angles and several people.
+    count: [3, 5]
+    shot_duration: [2.0, 2.5]
+    footage: Use shots where the product is really in use and the gesture is clearly useful. Vary creators, settings and framing. If a person speaks on camera or the captions say "I", keep that one person for the whole ad; a narrator voice-over is a general text, so keep varying people like the reference does.
+    caption: One caption on the first two usage shots explaining the routine in plain words (time per day, where you do it).
+  - slot: comfort
+    role: proof
+    purpose: Reassure the viewer that using it is easy and pleasant.
+    count: 1
+    shot_duration: [2.0, 2.5]
+    footage: A relaxed creator using the product, eyes closed or smiling, no visible strain.
+    caption: One short caption on how it feels or how simple it is (appearance and feel, never medical).
+  - slot: feeling
+    role: payoff
+    purpose: Show the emotional payoff, the person feeling good about the result.
+    count: [1, 2]
+    shot_duration: [2.0, 2.5]
+    footage: Smiling creators, a satisfied moment with the result. Prefer bright, well-lit shots over dark or colour-cast ones.
+    caption: None (let the voice carry it) or a short first-person line from a real customer.
+  - slot: guarantee
+    role: offer
+    purpose: Remove the risk of trying before the call to action.
+    count: 1
+    shot_duration: [2.5, 3.0]
+    footage: A creator holding the product or a smile to camera, with a calm area of frame for text.
+    caption: The brand's real guarantee or reassurance wording (guarantee, free returns, trial) in the default style. Never invent terms and check them against the landing page.
+  - slot: end_card
+    role: cta
+    purpose: Close on the call to action.
+    count: 1
+    shot_duration: [3.0, 3.0]
+    footage: The brand's end card image (product, offer, logo) with a slow zoom. Without an up-to-date end card image, compose one with the end_card tool.
+    caption: None, the image already carries the call to action.
+rules:
+  - {id: total_duration, check: total_duration, params: {min: 40, max: 55}, severity: warn}
+  - {id: product_shot_length, check: shot_duration, params: {label_prefix: product, min: 1.6, max: 2.0}, severity: warn}
+  - {id: product_shot_floor, check: shot_duration, params: {label_prefix: product, min: 1.0}, severity: fail}
+  - {id: usage_shot_length, check: shot_duration, params: {label_prefix: usage, min: 2.0, max: 2.5}, severity: warn}
+  - {id: caption_time, check: caption_min_on_screen, params: {min: 2.5}, severity: warn}
+  - {id: safe_zone, check: caption_safe_zone, params: {top: 100, bottom: 1620}, severity: warn}
+  - {id: end_card, check: end_card_required, params: {label_prefix: end_card}, severity: fail}
+  - {id: caption_lines, check: max_caption_lines, params: {max: 3}, severity: warn}
+  - {id: banned_words, check: banned_words, severity: fail}
+checklist:
+  - Every kept reference second is free of burnt-in text, third-party logos, watermarks and competitor names (check at full resolution on three different frames per shot).
+  - Text never covers a face, eyes or mouth. Move it to the free area of the shot.
+  - Product-only shots show the product exactly as it is sold today (current packaging, current version), verified on each shot of the final contact sheet.
+  - People are varied in the usage section (as in the reference) unless a person speaks on camera or the captions say "I", in which case that one person carries the whole ad; a narrator voice-over does not count.
+  - Each usage cut lands mid-gesture and the product is really in use on the extracted frame at the chosen timecode.
+  - Captions stay on screen about 3 seconds, are readable at phone size and are all still present at the end of the video.
+  - Guarantee and price wording match the brand's real terms and the landing page. Wording describes the experience and the features, never a medical result.
+  - The reference voice is never cut in the middle of a word and the audio runs to the last frame, with no silence at the end.
+  - Colour is consistent from shot to shot (no shot that turns red or too dark next to the others).
+  - The video ends on the call to action end card.
+example:
+  version: 1
+  name: example_remake_long
+  recipe: remake_long
+  format: {width: 1080, height: 1920, fps: 30}
+  segments:
+    - {type: clip, source: footage/reference_ad.mp4, in: 0.0, out: 6.0, focus: [0.5, 0.4], remove_text: {method: mask, box: [60, 1000, 1020, 1200], extra_boxes: []}, label: "hook:1"}
+    - {type: clip, source: footage/reference_ad.mp4, in: 6.0, out: 12.0, focus: [0.5, 0.4], remove_text: {method: mask, box: [60, 1000, 1020, 1200], extra_boxes: []}, label: "hook:2"}
+    - {type: clip, source: footage/reference_ad.mp4, in: 12.0, out: 17.0, focus: [0.5, 0.4], remove_text: {method: delogo, box: [60, 1000, 1020, 1200]}, label: "hook:3"}
+    - {type: clip, source: footage/alternative_broll.mp4, in: 3.0, out: 5.5, focus: [0.5, 0.5], label: "price:1"}
+    - {type: clip, source: footage/creator_b_talking.mp4, in: 1.0, out: 3.5, focus: [0.5, 0.4], label: "price:2"}
+    - {type: clip, source: footage/product_box_table.mp4, in: 12.2, out: 14.2, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: "product:1"}
+    - {type: clip, source: footage/creator_a_usage_1.mp4, in: 4.0, out: 6.5, focus: [0.5, 0.45], label: "usage:1"}
+    - {type: clip, source: footage/creator_b_usage_2.mp4, in: 9.0, out: 11.5, focus: [0.5, 0.45], label: "usage:2"}
+    - {type: clip, source: footage/creator_c_usage_3.mp4, in: 6.0, out: 8.5, focus: [0.5, 0.5], label: "usage:3"}
+    - {type: clip, source: footage/creator_a_usage_4.mp4, in: 12.0, out: 14.5, focus: [0.5, 0.5], label: "usage:4"}
+    - {type: clip, source: footage/creator_d_relaxed.mp4, in: 2.0, out: 4.5, focus: [0.5, 0.4], label: "comfort:1"}
+    - {type: clip, source: footage/creator_b_smile.mp4, in: 7.0, out: 9.5, focus: [0.5, 0.4], label: "feeling:1"}
+    - {type: clip, source: footage/creator_c_smile.mp4, in: 3.0, out: 5.5, focus: [0.5, 0.4], label: "feeling:2"}
+    - {type: clip, source: footage/creator_a_smile.mp4, in: 1.0, out: 4.0, focus: [0.5, 0.35], label: "guarantee:1"}
+    - {type: image, source: brand/end_card.png, duration: 3.0, motion: zoom_in, background: blur, label: end_card}
+  overlays:
+    - {type: caption, style: pill, lines: ["Myth: a great result", "needs a big budget"], start: 6.5, end: 9.5, y: 330, size: 60}
+    - {type: caption, style: pill, lines: ["Professional services add up", "one visit at a time"], start: 17.2, end: 20.2, y: 330, size: 60}
+    - {type: caption, style: pill, lines: ["Five minutes a day,", "right at home"], start: 25.0, end: 28.0, y: 1300, size: 60}
+    - {type: caption, style: pill, lines: ["Simple and easy to", "fit into your day"], start: 34.2, end: 37.0, y: 1300, size: 60}
+    - {type: caption, style: pill, lines: ["Not happy? You get", "your money back."], start: 41.6, end: 44.5, y: 1300, size: 60}
+  audio: {music: null, from_reference: footage/reference_ad.mp4, volume: 1.0, fade_in: 0.0, fade_out: 1.0}
+  output: {path: renders/example_remake_long.mp4, quality: final}

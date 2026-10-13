@@ -1,0 +1,292 @@
+# AdAnvil editing guide
+
+The doctrine an AI agent follows when it edits vertical 9:16 video ads with AdAnvil. It comes from editing real paid ads and being corrected on them. Read it once before your first storyboard, then use the recipe files (`recipes/*.yaml`) for the shape of each ad type.
+
+## 1. The job
+
+You judge, AdAnvil executes.
+
+- **You decide**: what the reference ad is doing, which footage fits, what the text says, where it sits, whether the result looks right, and what to ask the human.
+- **AdAnvil does**: cuts, colour handling, text rendering, text removal, audio, encoding, automatic checks and control images. It is deterministic, so the same storyboard gives the same video.
+- **Your loop**: decode the reference, ask the compliance questions, pick a recipe, fill its slots with footage, write the storyboard, run `storyboard_validate`, render a preview, look at the contact sheet and full-resolution crops, fix, render final, deliver.
+- Do not fight the tool. If something looks wrong, change the storyboard (footage, timing, text, position), not the pipeline.
+- A validation warning is a question, not an order: fix it or be able to say why the ad is better with it. A failure is a rule the recipe treats as a blocker.
+
+## 2. Before editing
+
+### 2.1 Decode the reference ad completely
+
+Do this even for a 10 second ad. What you skip here shows up as a rejected edit later.
+
+1. Probe the file (duration, size, frame rate, colour tags, audio streams).
+2. Find the scene cuts and build a timestamped contact sheet, then read it in vision.
+3. Transcribe the voice if there is one, and note the music: the decode returns its `music_profile` (tempo, pulse, feel `calm`, `medium` or `energetic`; it mixes voice and music when the reference speaks).
+4. Write a table: time, shot, burnt-in text, role of the shot (hook, myth, mechanism, proof, product, offer, call to action).
+5. Write the angle in one sentence (what belief or feeling the ad plays on) and the structure of its text (urgency, secret, reply to a comment, reminder, gratitude, negative bait turned around).
+   Also read who speaks in the text. An emoji or a name followed by `:` and quotes (`😩 : « ... »`) means a character is speaking. In the breakdown set `text_speaker` (`none`, `character`, `narrator`, `viewer`, `brand`) and `text_device` (`none`, `quote`, `punchline`, `question`, `label`, `subtitle_of_speech`, `price_or_offer`, `cta`). The remake must keep the same device (who says what), not just the words: an emoji kept as decoration without the colon and the quotes loses the dialogue. `ref_text_device` warns when it does.
+6. Mark what must be replaced (competitor footage, other brand's product, burnt-in text, logos) and what can be kept.
+7. In the breakdown, give every shot an `emotion` (`none`, `neutral`, `worried`, `frustrated`, `sad`, `tired`, `closed`, `skeptical`, `shocked`, `curious`, `relaxed`, `happy`, `satisfied`) and an `action` (free short text, for example "wipes the counter and sighs"). For every reference shot, note what the person feels and does; pick a library shot with the same emotion and the same kind of action. Note which faces answer a punch or a question: a reference whose "Are you sure?" is met by a skeptical or shocked face needs reaction faces in the remake, not smiles. Annotate your segments with `role` and `emotion`: `storyboard_validate` warns `emotion_mismatch` (a smiling face under a complaint, a flat face on a punch the reference answers with a reaction) and `ref_unannotated_emotion`.
+
+### 2.2 Ask the compliance questions BEFORE editing
+
+Put the questions to the human in one message and record the answers (a short decision log next to the storyboard).
+
+- **Claims**: which claims does the reference make (voice and text)? Which of them may this brand make? Anything about age, body, health, money or income, "cure" or "guaranteed result" wording, or before/after promises needs an explicit answer.
+- **Before/after authenticity**: same person, same framing and light, unretouched, not AI generated? Was the result obtained with this product?
+- **Third-party marks**: logos, competitor names, other brands' products in the frame, watermarks.
+- **Foreign currency and prices**: any price or currency in the reference that does not fit the brand's market or offer.
+- **Press and endorsement mentions**: "As seen in" strips, awards, celebrity references. Are they confirmed and sourced?
+- **Consent of the people shown**: written consent for paid advertising for every customer, creator or public figure visible.
+- **Provenance**: an ad found in an ad library belongs to an advertiser, not to a customer. Do not assume a video is customer content from its look.
+- **Music and voice licences**: is the reference track cleared for reuse?
+- **Numbers**: durations and quantities in the text ("Day 30", "in 5 weeks") come from the human or the source of truth, never from timestamps in the video.
+
+If the human overrules a reservation, propose compliant alternatives once, then execute their decision and record it. Do not reopen it in later versions.
+
+## 3. Picking footage
+
+- **One person per video when that person speaks on camera or the text says "I".** Changing the person, or the voice, mid-video does not feel natural.
+- **A narrator voice-over (the brand speaking, "tu"/"you" to the viewer) is a general text:** vary people like the reference does (`ref_people`), with different ages and looks in different settings.
+- **The product must appear exactly as it is sold today** (current packaging, current version) in every product-only shot. Older versions, prototypes and other brands' products do not go in. When several versions exist, filter on the `product_version` annotation of the catalog and look at each product shot of the final contact sheet with the current version's visible traits in mind. If unsure, show the human a comparison sheet instead of guessing.
+- **Avoid**: competitor footage, watermarks, AI generated before/afters, surgical or medical imagery, footage filmed by someone who did not consent, and another brand's product shown as yours.
+- **Cut in the middle of the useful gesture** (the lid coming off, the shoe hitting the pavement, the first sip, the smile starting). The contact sheet can be a moment off, so extract the exact frame at your chosen timecode and look at it before you commit.
+- **Prefer bright, well-lit shots.** Limit dark, washed-out or colour-cast shots to one or two in an ad.
+- **Talking-head UGC**: when the ad is a creator speaking to camera, the speech is the footage. Index with speech (`library_index` transcribes the clips with sound, fast, so a key word per line can be misheard: run `speech_refine` on the takes you keep), choose each line from its best take with `speech_takes` (no filler, no restart, a complete ending, a natural speech rate, a good level) instead of watching every take, and read `speech_view` before cutting: its `clean_segments` are the cuts that keep the speech and drop the pauses and hesitations. One creator for the whole ad; use the other clips as B-roll over the voice.
+- **Customer diaries**: the customer's own clips carry the ad. Add product shots as hands and product only, never another person's face, and do not add shots of unrelated accessories.
+- Use the footage catalog: search before you scan folders again, and only catalogue what is new.
+- **Long jobs:** indexing a big folder runs as a job; wait with `job_status(job_id, wait_seconds=90)`; if the connection drops, call `job_status` again (with `project_dir` if needed).
+- **B-roll and stock must be relevant:** a B-roll or stock shot shows the brand's own category and target (no lipstick shot for a coffee ad, no cat in a dog-food ad, nobody outside the target customer) and says the same thing as its text.
+- **A diagram or 3D animation must be readable in one second:** one idea, a recognisable subject, ideally named by the text or voice at the same moment, and the ad explains it. When in doubt, use a real usage shot instead.
+- **Problem first, then the solution:** the opening beats show the target living the problem (a worried or frustrated face, a runner out of breath, a messy kitchen, the old way of doing things) with no product on screen; the product appears only when the story turns to the solution. Translate every reference shot to the brand's product: a mascara ad's eye macro becomes a close-up of the brand's own key detail (the pour for a coffee brand, the sole for a running shoe, the dashboard for an app).
+- **Then let the solution breathe:** after the turn, several shots of different people using the product, happy and relaxed, with a visible sign of the result (a calm face, a tidy kitchen, an easy run), before the offer; one product-only shot is not a payoff.
+- **The brand's own CTA image wins when the human confirmed it:** end on it and write any doubt in the delivery notes rather than replacing it.
+- **Choose by what the shot expresses, not only by its subject:** annotate library clips with `emotion` and search with `library_search(emotion=[...])`. A face that smiles under a complaint ("my mornings are a mess") contradicts the text; a reaction (skeptical, shocked, worried) belongs on the lines that provoke it.
+- **Stock and diagram B-roll:** footage the brand put in its library is the brand's to use unless it is excluded by the brand rules; a diagram or 3D animation is the usual replacement for a reference's explanatory shots (anatomy, engine, app architecture).
+- Rushes with burnt-in text, bars or unusual stabilisation crops: plan the text removal method and the crop before you pick timecodes.
+
+## 4. Rhythm
+
+| Element | Rule |
+|---|---|
+| Usage or customer shot | 2 to 2.5 seconds |
+| Product-only shot | 1.6 to 2 seconds, never below 1 second (a 0.6 to 1.2 second product cadence read as "too busy") |
+| Hands-only insert in a diary | 0.6 to 0.8 second, about 3 seconds in total |
+| Fast text-hook demo shots | 1.2 to 3.5 seconds |
+| Before and after shots | 2 to 3 seconds each |
+| Caption on screen | about 3 seconds |
+| End card | 3 seconds as an image, or about 4.4 seconds as a product shot with a text call to action |
+| Product zoom | slow, 1.00 to 1.04 over the shot, not 1.07 |
+
+- Cut hard. Do not add transitions or effects between shots, the cuts carry the rhythm.
+- The recipe's total duration is a target range, not a goal in itself. A 20 second ad that lands its message beats a 24 second one.
+- If a segment drags, shorten the shot before adding another one. If it feels frantic, lengthen it.
+- Never show the same shot twice in one ad.
+
+## 5. Text
+
+**Placement**
+- Text never covers a face, eyes or mouth, nor the product being used.
+- The free area of the shot decides the zone. Main text goes at the top (y about 70 to 330) when the top is free, and at the bottom (y about 1250 to 1500) when the face is high or the head is tilted up. Bubbles and call to action text sit at the bottom.
+- On shots with a raised face, put the text at the bottom centre (y about 1300 to 1340).
+- If the text takes too much of the image, reduce it (cartouche 42 px, bubble 32 px, fewer lines) rather than moving it onto a face.
+- Text never renders wider than 960 px. Keep lines short so the renderer does not shrink them below about 50 px on a main text.
+
+**Content**
+- **One strong hook.** State the belief or the result, do not ask a soft question. Do not offer variants of the hook inside one video, one strong one is enough.
+- **Keep the structure of the reference and adapt it.** Rewriting away from it produces texts viewers do not understand. Every element needs an obvious link to the text (a comment bubble must answer the hook).
+- The age, status or situation in the text must fit the person on screen.
+- **Long text is split into two beats** that follow each other (half of the video each), never one block.
+- **Sentence case by default**: a capital at the start of each sentence, not all caps, except deliberate key words, stamps, or a house style the brand asks for.
+- **Claims wording**: describe what the product is, does and feels like, in terms the brand can prove ("small-batch roasted", "ready in five minutes", "feels lighter"), never a medical outcome, a cure, a guaranteed result or a comparison with a named competitor. The brand's banned words list is checked automatically, and it is a floor, not a full review.
+- Strong or shocking words are allowed only when the human explicitly asks for them.
+- Numbers of days, weeks or amounts come from the human, not from the video.
+
+**Styles (pick by context, not by taste)**
+- `pill`: calm shots, brand-voice captions.
+- `outline`: native social hook over moving shots, no box because a box ruins the shot.
+- `outline_soft`: diaries and customer footage, transparent text with a strong outline so it stands out on phone video.
+- `meme`: one long humorous text, five short lines, about 52 px, block at y about 1290.
+- `box`: offers, prices and call to action text on a product end card. The text is centred on its visual middle, with about half an em of side padding.
+- `label`: a small clean tag, a white rounded card with dark text and a soft shadow, no accent bar. A small tag or callout only, never the main text.
+- The validated main styles are `outline` (native social text over moving shots) and `pill` (calm shots).
+- `comment`: one real comment only, facebook look, blurred avatar and name, real reaction count, placed where it hides no face (often mid-frame, y about 880 on full-body shots).
+- Match the reference's signature text look when it has one (font, shape, position), measured on a frame in pixels.
+- Emoji: pick one provider and stay consistent inside the ad; `brand_get` returns `emoji_available` (the characters of the brand's emoji folder, or `"all"` for twemoji). Do not paste emoji from a font that lacks them.
+- Check that each caption stays on screen until its end time and remains present on the last frame it should cover.
+
+**Animated captions (`animation`)**
+- Captions are static by default (`animation: none`). Static is right for calm shots, brand-voice text and offers. Animate the captions of a spoken or punchy social ad: it is the look viewers expect.
+- `karaoke`: the whole chunk stays on screen and the word being spoken is lit. Use it for captions that follow speech (`voice_captions`, `speech_captions`, 2 to 4 words a chunk): the eye follows the voice.
+- `word`: one or two big words at a time (30% larger than `size`; a word of up to three letters is shown with the next one), the spoken one lit. Use it for punchy hooks and short key lines, not for whole sentences.
+- `pop`: each chunk scales in from 85% to 100% in 120 ms with an ease-out (`bounce: true`: an overshoot to 108% over 180 ms). Use it for written captions (`caption`), where nothing is spoken word by word. Emoji are part of the chunk and pop in with it.
+- The lit word uses `highlight` (default the brand's `visual.highlight_color`, else yellow `#FFD400`), may be drawn `highlight_scale` times larger (1.1 to 1.2 reads well, more looks like a bug) and sit on a rounded `highlight_box`. Choose a highlight that contrasts with the text and with the shot: yellow or green on white outline text. On a `pill` or `box` style, a `highlight_box` in the brand colour does the job (with no `highlight`, the word turns black or white to stay readable).
+- One animation per ad, one lit word at a time, 2 to 4 words a chunk. The text never moves from one state to the next, so a lit word cannot make the line jump.
+- A plain `caption` with `karaoke` or `word` spreads its words evenly between `start` and `end`; give `word_times` when you know when each word is said. Generated captions use the real word times.
+- Look at it: `caption_preview` draws any state of an animated caption (`chunk_index` and `word_index` in the overlay, or the time `t`).
+
+**Keyword emphasis**
+- `emphasis: ["word", ...]` draws those words in the highlight colour, with or without an animation (case and accents ignored). Emphasise the one word that sells (the result, the number, the offer), two at most per chunk.
+- In a typed caption or in the `show` text of a voice line, `*word*` does the same: `{"say": "forty nine dollars", "show": "only *$49* today"}`. The voice never says the stars.
+- Numbers and prices work: `"65,90 €"`, `"65,90"`, `"65.90€"` and `"-20%"` match the price however it is spaced, a multi-word entry (`"livraison offerte"`) matches those consecutive words, and `*65,90 €*` or `*-20%*` mark any text, spaces included. The stars are never drawn. `storyboard_validate` and `caption_preview` warn `emphasis_unmatched` when an entry matches nothing in its caption.
+
+**Chunks**
+- Captions generated from a voice or from speech never run across the end of a sentence, stop at a comma once they hold two words (so a clause is cut where a reader would cut it), and a mark such as `?`, `!` or `»` never starts a chunk.
+
+**Visual devices**
+- Beyond plain cuts an ad can use these devices: a **reveal** (a divider sweeps a before picture away to show the after picture), a **split screen** (honest before/after, problem and solution, two products), a **picture card** (a photo or a review screenshot that comes in over the video), a **video inset** (a creator reacting over a product page or a review, a product close-up in a corner), **stickers and arrows** (point at one detail: a price, a feature, a score), a **progress bar** (longer ads) and a **punch-in** (a sharp zoom on the strongest word of a talking head). The tool section of the agent guide has the fields of each.
+- **Use one or two devices per ad.** Each must answer a need of the story. A split screen, an arrow, a badge, a progress bar and a punch-in in the same 20 seconds look cheap and bury the product.
+- Reveal and split screen: use them only when both pictures are true and different (same person, framing and light, unretouched, confirmed): see Before and after below. A reveal gets one `focus` for both sides and 3 to 3.5 s; a picture card is an `image` overlay with `animation`, `frame` and `rotate`.
+- Split screen: use it only when both pictures are true (same person, framing and light, unretouched, confirmed). Pick `side_by_side` for portrait footage and `top_bottom` for landscape footage, set each panel's `focus` on the subject, keep labels to two or three words (`FROM THIS`, `TO THIS`, in a `label_style` of `label`, `pill` or `outline`), and a `gap` of 6 to 12 px in a `gap_color` that matches the ad.
+- Overlay times are snapped to the frame grid at render time: the nearest frame, and the frame of the cut when a start or an end is within half a frame of a segment cut (a caption timed 7.9003 s over a cut on frame 237 starts on that frame, not the next one).
+- Video inset: place it where it hides no face and none of the captions (`caption_covered_by_inset`, `inset_out_of_frame`); a circle suits a face, a rounded rectangle a screen recording. Without `audio` it is silent; with `audio: true` it is the only voice at that moment.
+- Stickers: they point at something real on the shot below, so measure the position on a frame; one sticker at a time, 1 to 2 s each; an arrow or a circle with `animation: draw`, a badge with `pop`.
+- Progress bar: only above about 25 s, at the bottom, thin (6 to 10 px), in the brand accent.
+- Punch-in: 1.1 to 1.25 on the strongest word, hold about half a second, once or twice per shot; above 1.25 it reads as a digital zoom (`digital_zoom`).
+- Stills in the middle of a video stay `static`, unless a slow zoom adds something (a product shot that needs life, a before/after pair). Then `zoom_to` goes from 1.00 to 1.06: the zoom is drawn at sub-pixel precision (the same on ffmpeg 6.1 and 9), so the picture never trembles, and a larger amount only reads as a digital zoom. The same holds for a `reveal` `motion: zoom_in` and a clip `zoom` on a low-resolution source.
+
+**Before and after**
+- A before/after is the strongest proof in an ad when the two pictures are real and the difference can be seen at a glance, and the weakest when they are not. It is carried by one device, never two: a **reveal** (a divider sweeps the before picture away to show the after picture), a **split screen**, or a **picture card** (a photo that comes in over the video).
+- **Two real pictures**: the same person, the same framing and distance, the same light, unretouched, not generated or enhanced by AI, obtained with this product, and the person's written consent for paid advertising. The human confirms each point; you never decide it from the pictures, and you never present an AI or retouched picture as a real result. The interval ("after 30 days") comes from the human.
+- **A visible difference**: two crops of the same take show nothing (`split_same_source` warns when both sides are one file at overlapping moments). Look at the frame at mid-sweep: if the two sides are hard to tell apart at a glance, change the pair, not the effect. Keep both sides in one orientation family (`reveal_orientation`) and give the segment one `focus` on the face or the product so they line up, or `focus: "face"`: with the vision environment (`vision_setup`) the main face of each side is kept centred at `face_y` (0.38 of the frame) and, when both sides show one face, `align_faces` (on by default) also gives both faces the same size.
+- **Reveal first**: the viewer watches the change happen. About 3 to 3.5 s with the defaults: 0.8 s on the before (`hold_before`), a 0.9 s `sweep`, then at least 0.6 s on the after (`reveal_after_short`). `left_to_right` by default, `top_to_bottom` for a standing person or a surface, `back_and_forth` for a slider look (a longer `sweep`, 1.6 s or more), `motion: zoom_in` for life. Two short labels in the ad's language, never a claim.
+- **Choose the pair by looking, with `compare_pair`**: before writing the segment, compare EVERY available pair, the photos, the brand's side-by-side composites split with `crop` (`before_crop` and `after_crop`, `{x, y, w, h}` in source pixels; a reveal side takes the same `crop` on an image, so the composite needs no preparing) and frames of before/after clips (`before_t`, `after_t`). The tool returns `visible_difference` from 0 to 100 (under 12 not visible, under 30 subtle, under 55 visible, 55 and over obvious), measured on the face when a skin-region heuristic finds one in both pictures, else on the whole frame after aligning sizes, and a side-by-side preview image. LOOK at every preview and use the pair whose difference is obvious at a glance: a low score looks the same to the viewer. Still images of the same pose beat moving clips for a reveal. The score ranks, your eyes decide, and the human confirms the pair.
+- **Split screen** for a side by side comparison to study for longer (two products, two methods). **Picture card** (`image` overlay with `animation`, `frame`, `rotate`) when the proof is a quick one inside another shot: a customer photo pair or a review screenshot that comes in over a talking-head ad for 2 to 3 s (`pop`, `slide_up`, `slide_left`, `slide_right` or `fade`, a `frame` with a `radius`, a `border_width` and a `shadow`, a small `rotate` for a photo card look) and leaves with `exit: true`, while the creator keeps talking. Keep it out of faces and captions.
+- **Use the brand's real creator photos**: for a before/after, prefer the photos of the person the viewer sees elsewhere in the ad (the creator, the customer who speaks), shown as a card or a reveal over that person's own shot, rather than an anonymous composite taken from the website. The same face in the ad and in the proof is what makes the change believable.
+- **Compliance**: the caption describes the picture, not a promise. No medical outcome, no "guaranteed result", no result for everyone (use the brand's own "results vary" wording if it has one). Record the consent and the confirmed pair in the decision log.
+
+## 6. Endings
+
+- **Always end on a call to action.** Even when nobody asked for it, the human will want it.
+- **No caption on the end card image, and the call to action written once.** `caption_on_end_card` warns when a written, voice or speech caption stays more than 0.2 s on the end card image (the last segment labelled `end_card` when it is an image, or the brand's CTA image): end the caption before it. `cta_text_missing` warns when `brand.yaml` has a CTA wording (`product.cta_text`) and no caption contains it (case, accents and quotes ignored): add it as a caption on the end, unless your end card image already shows it. Ending on the brand's own CTA image counts as showing it.
+- **The brand's own CTA image comes first.** When the brand has a ready-made one (`cta_image` in `brand.yaml`, a `cta/` folder or `brand/`), use it as the last segment (`image`, `zoom_in`, about 3 seconds). Compose an `end_card` only when there is none. `storyboard_validate` warns `cta_image_unused` when `brand.yaml` has a `cta_image` and the last segment is neither that image nor labelled `end_card` with a reason in `gaps` (type `other`).
+- Options: the brand's end card image (3 seconds, slow zoom), or a clean product shot of about 4.4 seconds with the call to action in a `box` text (2.4 seconds was too short to read), or a product shot with the guarantee (or another reassurance such as free returns or a free trial) written large above the box (about 3 seconds).
+- If the brand offers a guarantee, free returns or a free trial, put that reassurance line before the end card, or on it, in the brand's real words and with the terms checked against the landing page. Never invent terms, and leave the line out when the brand has none.
+- Check that press mentions or endorsements on the end card image are confirmed.
+- **No ready-made or up-to-date CTA image?** Compose one with `end_card` from a real product photo checked for the current version, the real offer, guarantee and call to action wording (a pill, a title with one accent word, the photo in a white card, badges, a button). Use it as the last segment (`type: image`, `motion: zoom_in`, about 3 seconds, label `end_card`), after the last caption, with no subtitles on it. With a voice-over it lasts the last line plus 1.5 seconds. Look at the result before using it. `crop` is in the source's display pixels, before scaling (on a 1920x1080 frame, `{"x": 600, "y": 100, "w": 700, "h": 700}` keeps a 700 px square); the tool returns `source_size` so you can measure it.
+- An offer or discount shown on screen must match the landing page at the time of launch.
+
+## 7. Sound
+
+- With no voice, reuse the reference's music when the human has cleared it, or pick a licensed track. Shorter than the video, it loops with a crossfade. Longer, it is trimmed with a fade out. The audio always ends with the video.
+- **Never leave silence at the end.** If there is a voice, keep music running for a short time after the last word, especially over the end card.
+- **Generated voice-over**, when the recipe needs one:
+  - The voice speaks on behalf of the brand, never as an invented customer telling a made-up story. Only real customer sentences, quoted as such ("A customer wrote to us..."), belong in the script.
+  - Use one voice per video, generated sentence by sentence, trimmed just before the first word and just after the last, and read back with a transcription tool to catch repeated or swallowed words.
+  - Use a reference clip in the target language, or the accent will drift.
+  - The voice language is the spec's `language`; without it, the `language` of `brand.yaml` (`fr-FR` counts as `fr`), else `en`. Set it explicitly when the script is not in the brand's language.
+  - Mix the music low enough to be heard but not to compete. The tool brings the bed to a reference level first (-11 LUFS, plain gain, bounded to -12 / +15 dB), then applies `music_volume`: 0.32 to 0.38 sits about 5 dB under the voice whatever the track (a level of 0.16 was inaudible; `ad_score` asks for the voice 4.5 dB above the music, which 0.38 or less gives). Pick a track whose energy matches the reference: a soft piano under a fast edit feels flat. Use `music_profile` to compare: it returns each track's tempo (BPM), `pulse` (how clearly the attacks stand out), onset rate, loudness range and a feel. Choose the library track whose profile is closest to the reference's. Feel thresholds: `calm` when the pulse is under 2.0 (no clear beat, the tempo is then null); `energetic` when the pulse is 2.2 or more and the tempo 110 BPM or more; `medium` otherwise.
+- **Music: where a track comes from and what it needs** (`music_search`, `music_fetch`):
+  - Tracks come from `music/`: your own licensed files, tracks fetched with `music_fetch` (Openverse, and Freesound when `FREESOUND_API_KEY` is set), or tracks made locally with `music_generate` (optional, `adanvil music-setup`; it needs about 20 GB of free memory and is refused below that, `ADANVIL_MUSIC_MIN_FREE_GB`; it follows the prompt loosely, so measure the result with `music_profile`).
+  - **Licence rules.** A paid ad is a commercial use that edits the track (cut, loop, fade, mix), so the licence must allow both. Accepted: CC0, Public Domain Mark, CC BY, CC BY-SA. Refused, never offered by the search: any NC (non-commercial) and any ND (no derivatives) licence, and Freesound's "Attribution NonCommercial" and "Sampling+". When in doubt, the track is not used.
+  - **Attribution.** CC BY and CC BY-SA need the author credited. `music_fetch` writes the exact line in `music/<file>.licence.json` (`attribution_text`); the render report and `ad_score` repeat it in the warning `music_attribution_required`. Put that text in the ad's description (the post caption), not on the video. CC0 and public domain need nothing. Keep the source link: the record has it.
+  - **Where the licence is read.** First `music/<file>.licence.json`; when there is none, the line of that file name in `music/LICENCES.txt` (written by `music_fetch`, or by hand as `<file>: <title>, <author>, ..., licence <name>`); the report says which one it used (`read_from`: `music/LICENCES.txt line 3 (no sidecar)`). A ledger line gives the licence name; it counts as needing an attribution when it has an `Attribution required: "..."` part or a CC BY / CC BY-SA name.
+  - **A track with no record** (no sidecar and no line in `LICENCES.txt`) raises `music_licence_unknown` in the render report and `ad_score`, and the manifest says `unknown`. Check that its licence allows an ad, write the record (`<file>.licence.json` with at least `licence`, `title`, `author`, `attribution_required`, `attribution_text`), or fetch the track again with `music_fetch`.
+  - **Cover art.** Fetched mp3 files carry an embedded picture. An audio file whose only video stream is that picture (`attached_pic`, or one still mjpeg/png frame in a file with audio and an audio extension) is audio everywhere: validation, `music_profile`, `music_beats`, the audio bed. `music_fetch` also removes the picture (`-map 0:a -c copy`, same container) so the stored file is clean.
+  - **The feel guess of `music_search` is only a hint.** `fit.feel_guess` is read from the track's OWN title, tags and genres (never from the feel you asked for): `calm` (ambient, piano, chill, lofi, sad, ...), `medium` (pop, indie, jazz, folk, corporate, ...), `energetic` (upbeat, rock, metal, edm, epic, ...), and `unknown` when nothing matches or two feels tie. `fit_to` ranks by it, after the length. The real answer is the measured profile that `music_fetch` returns (`feel`, `tempo_bpm`, pulse): trust that one.
+  - **Picking a track for an ad.** 1. Decide the feel from the reference (`music_profile` of its soundtrack) or from the offer: calm for a soft skincare story, energetic for a fast text ad; write it in `audio.music_feel`. 2. `music_search(query, mood, fit_to="storyboard", storyboard="storyboards/<name>.json")`: the tracks at least as long as the ad come first. 3. Listen to the `preview_url` of the top three, then `music_fetch` the one or two you like. 4. Compare the measured `feel` and `tempo_bpm` with the target (`music_profile` thresholds above) and choose; for a music-led ad check `music_beats`. 5. Set `audio.music`, render, and read the warnings: attribution text into the description.
+  - A Freesound track is the high-quality MP3 preview (the original file needs a login); an Openverse track is the file the source serves. Search words are English: "upbeat acoustic", "calm piano", "lofi", "corporate".
+- **A creator's own sound (`audio.clips`)**, for talking-head UGC:
+  - The bed is the original audio of the clip segments, joined exactly like the picture (every piece lasts its segment, a 10 ms crossfade at each cut) and normalised on its own to `voice_loudness` (-15 LUFS), like a voice-over. Music goes under it at `music_volume` (0.2 to 0.3 for a speaking creator, so it shows only in the pauses and under B-roll). It cannot be combined with a generated voice or a reference soundtrack.
+  - **Cut on the pauses.** Take cut points from the `clean_segments` of `speech_view`: they keep 0.06 s before a word and 0.10 s after, drop the pauses over 0.35 s and the fillers (euh, um, uh, er, bah, ben; genre, du coup and like only when said alone), and never fall inside a word. A cut inside a spoken word is a click and a swallowed syllable: `cut_mid_word` warns about it (not when the next segment resumes the same source where this one stopped, within one frame: the voice goes on across that cut).
+  - **B-roll over the voice** (an L-cut): a segment with `audio_from` keeps its own picture and plays another clip's sound from the `in` point where the sentence goes on, so the creator never stops talking when the picture changes. Over a long sentence, change the picture every 1.5 to 3.5 s.
+  - **Right words before captions.** Indexing uses a small, fast model so the speech is searchable at once. Once the takes are chosen, call `speech_refine` on those clips (a stronger model and the brand vocabulary: brand name, product name and the optional `speech.vocabulary` of `brand.yaml`), then cut and caption. A word that is still wrong can be shown right with `speech_captions.corrections` (`{"heard": "shown"}`), only as a close spelling of the heard word (`rites` to `rides`): every correction is listed in a `speech_corrections` warning for a human to check, and a correction that changes the word too much is refused, because it would put words in the speaker's mouth.
+  - **Voice recorded apart.** A video whose own sound is silent has the speech status `silent_audio` and, when audio files nearby share words with its name, `separate_audio_candidates` (for example `HOOK1.mov` and `VOIX OFF/HOOK1.1.m4a`). Audio files in `footage/` are indexed as `audio` entries and are valid `audio_from` sources. AdAnvil does not sync them: lay the file on the segment with `audio_from`, then check on a preview that the lips and the voice match.
+  - **What the creator says is a claim.** A kept spoken word that is a banned word of the brand raises `banned_word_spoken`; cut it out or take another take. Apply the same compliance questions to the speech as to the text.
+  - An image (end card) and a clip without sound are silence: keep the music under the end card so the audio does not stop before the video (QC `audio_tail`).
+  - Captions come from the speech (`speech_captions`: chunks of 3 words, upper case, outline, hesitations left out), not from typed text, so they follow every cut; check one chunk with `caption_preview`.
+- **Sound design** (optional): a whoosh on a cut, a pop when a caption appears, a ding on the price, a riser before the reveal, cuts on the beat of the music.
+  - Build the pack once: `sfx_list(fetch=true)` or `adanvil sfx-fetch <project_dir>` puts about 18 sounds in `sfx/`, each from a pinned CC0 source or synthesised in code, trimmed and set to one level (loudest 400 ms at -16 LUFS, peak under -1.5 dBFS); sources and licences are in `sfx/LICENCES.txt`. Your own files in `sfx/` work too.
+  - Place a sound with `{"type": "sfx", "source": "sfx/pop.wav", "at": 3.2, "volume": 0.8}`, or let `audio.sfx_auto` do it (`cuts`, `captions`, `every`, `min_gap` 0.6 s, `volume` 0.5). Sounds are mixed over the finished bed, never clip (true peak under -1 dB), never pass the end of the ad, and work with a voice, clips or music alone. A riser stops at its peak: it ends where the reveal begins.
+  - Use sounds on fast text ads, reveals and offers. A sound on every cut gets tiring: every second cut, or only the key moments (the reveal, the price, the end card). One kind of sound per role, under a voice (volume 0.3 to 0.6), never three at once. None on a calm testimonial or a creator talking.
+  - Music-led ads: cut on the beat. `music_beats` lists the beats of the track as it will play; `storyboard_snap` moves each cut within `max_shift` of a beat onto it (it keeps `in` points, segment order and the total duration, and never makes a segment shorter than 0.5 s; with `save_as` the new storyboard is named `save_as` and renders to `renders/<save_as>.mp4`, without it the name gets `_snapped`, so a render never overwrites the original); `storyboard_validate` reports an info `beat_alignment` with the share of cuts on a beat. Errors: `sfx_missing`, `sfx_not_audio`, `sfx_after_end`; warning `sfx_auto_empty`.
+- **Never put `loudnorm` in a filter graph that also trims the output length.** It eats the last one or two seconds. Normalise the voice on its own first, then mix.
+- Check that audio duration equals video duration and that the level is not zero in the last seconds.
+
+## 8. Colour and technical traps the tool already handles
+
+You do not need to work around these. Know they exist so you check the outcome, not the mechanism.
+
+- **HDR sources**: phone rushes may be HLG or PQ. AdAnvil tone-maps them to SDR and tags the output bt709, because otherwise SDR shots turn dark red on some players and the contact sheet will not show it. Do not pre-convert your sources.
+- **Dark shots**: an automatic gamma lifts shots whose mean brightness is low. If a shot still looks muddy, pick another shot rather than stacking corrections.
+- **Still images**: a still image inside a montage is rendered without per-frame zoom, since that makes it jitter by a pixel. Use a static image over a blurred copy of itself. Do not ask for an animated zoom on a still in the middle of an ad.
+- **End card zoom**: the end image is upscaled first, so the slow zoom stays smooth.
+- **Zoom on video**: done with a time-driven scale and crop, never a `zoompan` filter on video (it produced tens of thousands of frames for a two second shot).
+- **Rotation and framing**: the tool honours the rotation flag of phone footage. Give crops in the coordinates you see on screen.
+- **No fake close-ups.** `crop` is for removing edges or burnt-in text, up to about 1.25x. Cropping a medium shot to fake a close-up looks zoomed and soft. Close-ups come from footage filmed close. `storyboard_validate` warns `digital_zoom` when a segment enlarges its source more than 1.25x beyond a plain cover-fit (`crop`, `zoom.to` and `freeze.zoom` all count).
+- **Burnt-in text removal**: three methods, chosen per segment. `delogo` (a measured box, then a caption at least as large as the box), `mask` (a pixel mask for fixed text, invisible under a transparent caption), `crop_out` (a band above or below the text, cleanest when the text sits near an edge). If a caption is placed over erased text, make it cover the erased area.
+- **Freeze and zoom** on an inset (before/after inserts): end the segment on the frame you want, then hold and zoom towards the inset.
+- **Output contract**: H.264, yuv420p 8-bit, bt709 tags, 30 fps, 1080x1920, AAC. If a player shows wrong colours, probe the file before touching the edit.
+
+## 9. QC checklist
+
+Look at the contact sheet first, then at full-resolution crops of the risky zones, then run the technical checks.
+
+**On the contact sheet (16 frames)**
+- Text is readable, not cut, not overflowing the width, and never on a face.
+- The product is visible where it should be, and every product-only shot shows the current version.
+- No black bars, no letterbox leftovers, no shot that is very dark or very red compared with its neighbours.
+- People are varied (as in the reference) under a narrator voice-over or a general text, and the same person throughout when that person speaks on camera or the text says "I".
+- The story reads without sound.
+- No product on screen before the story turns to the solution; the opening faces live the problem.
+- Every B-roll or stock shot shows the brand's own category and target and says the same thing as its text; every diagram or 3D animation is readable in one second, and when in doubt a real usage shot replaced it.
+- Every face fits its text: no smile under a complaint, a visible reaction where the reference has one.
+
+**On full-resolution crops**
+- Areas where burnt-in text was removed, at three different instants.
+- The end card during its zoom (a tile of the same detail every six frames should not jump).
+- Emoji, small text and caption edges.
+- Freeze and zoom shots on the inset.
+
+**Technical**
+- The file decodes without error and its duration and 1080x1920 size are as expected.
+- Pixel format and colour tags are `yuv420p`, bt709, bt709, bt709.
+- Audio and video durations match, the audio is present until the end, the voice is not cut mid-word (with `audio.clips`: no `cut_mid_word` warning, no stretch of silence longer than the cut margins inside the speech, and no `banned_word_spoken` left).
+- Every caption is present until its end time, and the last caption is not missing.
+- The validator reports no failure, and every warning is fixed or justified.
+
+**Score the ad before delivery** (`ad_score`)
+- `qc_run` says the file is correct; `ad_score(project_dir, video, storyboard)` says whether the ad is any good. Run it on the final-quality render with its storyboard, LOOK at `safe_zones_preview.jpg` and at the frame of each top finding, fix the findings by impact (each has a time, a severity and a fix), render again and aim for 80 or more. `storyboard_validate(..., score_check=true)` runs its cheap half earlier, as warnings prefixed `score_`.
+- Six sub-scores, each from 100 down by its findings (weights): hook 20, pacing 15, reading 20, story 20, safe zones 10, audio 15. Every threshold is a guideline, not a rule: a finding is a question.
+- **Hook**, first 1.5 s: a cut or motion in the first second, a face or the product, a written text within 0.5 s, audio from the first half second.
+- **Pacing**: cuts per 10 s by quarter, the longest shot, a shot over 4 s in the middle of a fast ad (shots of 2.5 s or less on average), a shot over 6 s, a slow ad.
+- **Reading**: a written caption stays on screen 0.25 s per word + 0.6 s (at least 1.2 s), at most 7 words per line, and a contrast of 3:1 or more against the pixels around its letters on the real frames (a WCAG-like luminance ratio; high under 2:1).
+- **Story**: no product before the story turns to the solution, the product shown at least once, the call to action written or spoken (the brand's own wording when it has one), an end card or the call to action in the last 4 s.
+- **Audio**: loudness from -20 to -10 LUFS, the voice at least 4.5 dB above the music (the default `music_volume` 0.35 leaves about 5 dB and passes), no silence of 0.7 s or more.
+- **Platform safe zones**: the apps draw a top bar, a column of buttons on the right and a bottom band (account, description, call to action) over the ad, and a caption or key sticker under them is hidden. Pixel boxes (left, top, right, bottom) on a 1080x1920 frame, scaled to other sizes; a box that overlaps one by 24 px or more in both directions is a finding. Stories have no button column.
+  - `tiktok` `top_bar` (0, 0, 1080, 150), `tiktok` `right_buttons` (900, 760, 1080, 1480), `tiktok` `bottom_band` (0, 1480, 1080, 1920)
+  - `reels` `top_bar` (0, 0, 1080, 250), `reels` `right_buttons` (940, 1000, 1080, 1580), `reels` `bottom_band` (0, 1580, 1080, 1920)
+  - `stories` `top_bar` (0, 0, 1080, 250), `stories` `bottom_band` (0, 1580, 1080, 1920)
+  - `feed` `top_bar` (0, 0, 1080, 100), `feed` `bottom_band` (0, 1780, 1080, 1920): the placement of 4:5 and 1:1 renders, scaled to the frame height; `ad_score` picks it by itself for such a video
+- Without the storyboard the score runs on the pixels and the sound and lists in `skipped` the checks that need words, timings or roles.
+
+**Compliance, once more on the final text**
+- No banned word, no medical claim, no unconfirmed mention, and the guarantee, price and offer are consistent with the landing page.
+- Report to the human whatever remains open.
+
+## 10. Iterating with the human
+
+- **Deliver a complete video**, not a storyboard in words. The human judges on the real video and iterates quickly.
+- **Change only what was asked.** Re-render the same video with the requested change, keep everything else identical, and keep the same file name.
+- **Apply cross-cutting fixes to the whole batch.** If a font, an emoji provider, a call to action or a colour setting is corrected on one ad, correct it on all ads that share the same process before the human has to ask.
+- **Keep versions.** Put earlier renders in a clearly named folder (for example `previous/v1`) so the human never confuses them, and never overwrite a version they have not seen.
+- **Wait for approval before naming and filing.** Name and store the final files only after the human says the video is right, so you do not update a filed file on every round.
+- **Read the feedback as a rule.** When a correction generalises (a placement, a size, a rhythm, a style refusal), write it into the project's learnings file with the date, so the next ad starts from it. Consolidate the learnings into the recipes on a regular schedule.
+- **Do not add what they did not ask for.** An ad that already tells a story is improved by cutting, not by adding.
+- When a decision is theirs (a risky concept, a claim, a person), give your reservation once, execute what they decide and record it.
+
+## 11. Testing variants and formats
+
+Paid social is won by testing. One ad is a guess; a handful of versions that differ in ONE thing tell you which guess was right.
+
+**What to vary first: the hook, the first 2 to 3 seconds.** It decides whether anyone watches the rest. Then the call to action, then the body. Change one axis at a time when the budget is small, and keep EVERYTHING else identical (same footage after the hook, same voice, same music, same end card), or the result tells you nothing.
+
+**How many.** A common start is 3 hooks x 1 body x 2 calls to action = 6 versions. More than that splits the budget so thin that none of them gets a verdict. The matrix is capped at 24.
+
+**The tools.**
+- `variants_build(project_dir, base, variants, name_pattern="{base}_{hook}_{cta}")`: `variants` is `{axis: [{id, changes}]}` for up to 3 axes (`hook`, `body`, `cta`, or any names). A change is a `storyboard_patch` change (`{path, value}` or `{path, remove: true}`) or a slot replacement `{replace_label: "hook", segments: [...], overlays: [...]}`: it swaps all the segments of that label (they must be next to each other) and moves everything after the slot by the difference of duration. Overlays that were on the old segments go away; the new `overlays` are timed from the start of the slot; the later overlays, their word times and the end of the overlays that span the slot follow. It is refused, with the reason, when a recorded voice-over (`audio.voice`) would no longer match the picture, when an overlay only partly overlaps the slot (the test has a tolerance of 0.001 s, so a range built from summed durations still counts as inside), or when the label is not one run of segments. An option with `changes: []` (or no `changes`) is the control: the base unchanged. Timed sounds follow the slot like overlays: an `sfx` overlay after it moves by the difference of duration; one inside it goes away when the new slot brings its own `sfx` (timed from the slot start), else it stays at the same offset; the result lists what moved (`moved`). Every error of every variant comes back at once (variant, path, message), not one per call. A base that is itself a variant keeps its ids in the new ones (`hook=h2;cta=ca;fix=sq`). Each variant is saved as `storyboards/<name>.json` and validated (an existing storyboard file is NEVER overwritten, whoever made it, an earlier `variants_build` of the same base included: the error lists every file that would be replaced, `overwrite=true` replaces them; renders may be replaced, storyboards may not); the result lists duration and warnings, and a contact sheet shows two strips per variant, the first 3 s on top and the last 3 s below (so a call to action that differs between variants is visible; when the ad ends on an image end card, the bottom strip is the 3 s BEFORE the card, the CTA part, because a card shared by all variants would make every bottom row identical): LOOK at it, a hook that does not read at that size will not read in the feed.
+- `render_batch(project_dir, storyboards, quality, batch, formats)` (`quality` is `final` or `preview`; `draft` is an alias of `preview` everywhere a quality is taken: the files are `*.preview.mp4` at half the size, and the report says `preview`): ONE detached job renders them in order with a shared segment cache, so the body and the end card are built once for all the versions (the first render is the slow one, the others only encode). `job_status` shows the progress per render, each output as it finishes, the total time and `cache_builds`.
+- `render_formats(project_dir, storyboard, formats)` or the storyboard field `formats: ["9:16", "4:5", "1:1"]`: the same ad in each ratio.
+
+**Formats per placement.** `9:16` for Stories, Reels and TikTok, `4:5` for the Feed (the largest vertical picture the Feed shows), `1:1` for the placements that still want a square. All three are 1080 px wide. For each format the footage is re-cropped (face-aware with `focus: "face"`, else by `focus`), a still or an end card that does not fit is shown whole over its blurred copy, and captions, stickers and images keep their place by bands: the part of the frame the platform leaves free is mapped onto the free part of the new frame, then anything that would still leave it is pushed back inside (the notes of the result list each move). Text is scaled to the format: `min(1, out_height / design_height * k)`, which keeps the share of the frame height in 4:5 and about 0.8 of it in 1:1, never under 38 px for main text. A caption that lands on a still or an end card shown whole is moved to the largest free band of the picture (above, below, or an empty area of the picture), so it never covers the card's text or button; if no band fits, it shrinks to the minimum and the result carries `caption_over_card_content`. The same warning comes from validation and `ad_score` in 9:16 when a caption sits on a card's content, and `qc_run` saves the end card frame (`endcard.jpg`). A caption never sits on a face in another format: `render_formats` carries the face boxes of the footage under each caption (the stored vision faces, else the vision worker when it is installed, else the check is skipped and a note says so) to the new frame, and a caption keeps the place the re-layout gave it when that place is free; otherwise it moves the least it can, to the nearest free spot on the same side of the face (a hook at the top stays above the head), clear of the content of a still shown whole and, when possible, of the other overlays on screen; it shrinks to the readable minimum if needed, else the note `caption_on_face` says it cannot. A spot is only taken after it is CHECKED: the caption is moved there, measured, and `caption_on_face` is run on that final position against the faces of every sampled moment of its time range (one look every 0.2 s, not a handful); a spot that fails is dropped for the next one (other side of the face, then a smaller size). When the head crosses the whole free band at some moment, the caption goes where it covers a face at the fewest looks and the note says how many. Each move is in the notes with its distance (`moved +33px off a face (same side of it)`), and only a move that passed the check says "off a face". After the layout AND the per-format overrides, one final check on the final position gives the last note per caption (`caption_on_face: overlay 3 (caption) cannot avoid a face in 1:1 (it covers one at 7.9s ...)`, or `still covers a face ... after its formats[...].y`); `qc_run` repeats the same test on the rendered frames (four looks per caption) and, when the source face data and the rendered-frame detection disagree, reports both (`source face data says it covers a face; rendered-frame detection finds none`). "On a face" means on the face core: the detector box from the eye line to the chin with a small margin, so a caption above the hair or on the forehead does not count. Detections that are not people (a drawing or diagram on a tablet or poster: confidence under 0.88) and tiny faces (under 6% of the picture width) are ignored. The layout is predicted from faces detected on the source footage at each sampled moment (with the same detector and frame size as `qc_run`, not the stored index, which is sampled every second or so and moves too little for a head that turns), so on an extreme close-up with a zoom or a punch check the frame all the same. `ad_score` and `qc_run` run the same test (one function, same core box and same filters) on the rendered frames, in every format including 9:16 (finding or check `caption_on_face`, needs the vision environment). To place one overlay by hand in one format, give it `formats: {"1:1": {"y": 900}, "4:5": {"hidden": true}}` (keys `x`, `y`, `size`, `anchor`, `hidden`; `x` is `x_center` for a caption): applied last, after the automatic layout, for that format only. When the storyboard is already 9:16, the 9:16 output is the storyboard as it is (the band remap applies to the other ratios only), so it scores like the plain `render_batch` render. `qc_run` crops its overlays where the effective storyboard of that render has them (`renders/<batch>/_storyboards/<name>.json`, found by itself or passed as `storyboard`), so a moved caption is not cut in half. `ad_score` and `qc_run` use the safe zones of the matching placement (`feed`: a 100 px band at the top and 140 px at the bottom on a 1080x1920 frame, scaled to the frame height). Look at each format: a face that is cropped, a caption that sits on the product, or a card that lost its button needs a hand-made version, not a layout rule.
+
+**Naming and manifest.** `<base>_<hook>_<cta>` for a variant, `_9x16`, `_4x5` or `_1x1` added for a format: `summer_h2_c1_4x5.mp4`. Every batch writes `renders/<batch>/manifest.csv` with one row per file (`file`, `variant ids`, `format`, `duration`, `score`, `hook text`, `CTA id`, `CTA text`, `music licence`, `quality`), ready to upload to an ads manager, next to the videos, their `.report.json` and `_sheet.jpg`. `CTA text` is the text of the last call to action part (the segments labelled `cta` or `end_card`, else the segments after the last labelled one), each text with its role and the most prominent first, joined by ` | `: `caption: 65,90 € au lieu de 89,90 € | badge: Satisfaite ou remboursée 60 jours`. A phrase that two CTAs share in different roles (the guarantee as the big caption in B, as the badge in A) therefore still tells them apart; an emoji alone never does. `CTA id` is the id of the `cta` axis; when the batch holds several CTA variants, `CTA text` lists only the role-and-text pieces that are not shared by all of them (the whole text when nothing differs or there is no `cta` axis; computed over the variants rendered in that call). `music licence` is the licence of `audio.music` (`CC0 1.0`, `CC BY 4.0; attribution required`, `unknown` for a track with no licence record, empty without music): read it before uploading. `quality` is the quality that was rendered AND scored (`preview` or `final`): a preview scores lower than its final, so compare only rows of the same quality. The `width` and `height` of each render in the job report are those of the file written (a preview is half the storyboard's size). Older manifests are read with an empty `quality`. Rendering into an existing batch folder merges the rows by file name (the same file is replaced, the others are kept). The score is `ad_score` of the render (preview renders too, on the preview file) with the safe zones of its placement.

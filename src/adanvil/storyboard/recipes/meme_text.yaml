@@ -1,0 +1,100 @@
+id: meme_text
+name: Single meme text
+summary: One humorous text stays on screen for the whole ad over a single creator's footage, then a call to action.
+when_to_use: >
+  Use it when the reference is a meme-style ad built on one relatable joke or "POV" line, and the brand has a creator who is
+  comfortable with an unflattering starting point and a happy ending. Do not use it when the joke would rest on a claim, an age
+  or a body comment the brand cannot stand behind, when the brand has no footage of one person across several situations, or
+  when a voice is needed to explain the offer.
+duration: {min: 18, max: 26}
+audio:
+  source: either
+  notes: >
+    Reuse the music of the reference when its licence allows it, otherwise a licensed track with the same mood. No voice, the
+    text is the whole script.
+captions:
+  style: meme
+  y: 1290
+  size: 52
+  notes: >
+    One text only, shown from the first frame until the end card. Five short lines, balanced and cut by meaning, in a centred
+    pyramid, one emoji at the end at most. At 52 px and y 1290 the block sits under the chin on face shots (its bottom edge
+    lands around y 1650). It must never cover eyes, mouth or the product, so test the layout on a real frame and check it on
+    six different shots (close-up, face to camera, wide) before rendering the whole ad. Do not let automatic shrinking push the
+    size under about 50 px, cut the line instead. Sentence case.
+structure:
+  - slot: open
+    role: hook
+    purpose: Set up the joke with a relatable, slightly unflattering starting point.
+    count: 2
+    shot_duration: [2.0, 2.5]
+    footage: Two tight shots of the same creator in a relatable, slightly unflattering moment (the messy kitchen, the tired morning, the tangled cables), filmed by the creator. Avoid anything humiliating or medical looking.
+    caption: The single meme text (meme style), already on screen from 0 s.
+  - slot: reaction
+    role: punch
+    purpose: Turn the joke, the same creator now facing the camera and smiling, with the earlier state shown as a small inset.
+    count: 1
+    shot_duration: [2.5, 3.5]
+    footage: Face to camera, smiling, calm background. Composite a small still of the starting point as an inset (about 380 px wide, white border) in a corner where it covers no face.
+    caption: The meme text continues, unchanged.
+    effects: An image overlay for the inset, during this shot only.
+  - slot: usage
+    role: demo
+    purpose: Show the product being used, the payoff of the joke.
+    count: 4
+    shot_duration: [2.0, 2.5]
+    footage: Four different usage shots of the same creator (different angles or areas), the product clearly visible, the gesture readable.
+    caption: The meme text continues, unchanged.
+  - slot: smile
+    role: payoff
+    purpose: End the story on the creator happy, in a satisfied moment or a smile to camera.
+    count: 2
+    shot_duration: [2.0, 2.5]
+    footage: Two bright smiling shots, no product needed. Prefer good light over dark or colour-cast shots.
+    caption: The meme text continues until the end of the last smile.
+  - slot: end_card
+    role: cta
+    purpose: Close on the call to action.
+    count: 1
+    shot_duration: [3.0, 3.0]
+    footage: The brand's end card image with a slow zoom. Without an up-to-date end card image, compose one with the end_card tool.
+    caption: None, the meme text has ended.
+rules:
+  - {id: total_duration, check: total_duration, params: {min: 18, max: 26}, severity: warn}
+  - {id: usage_shot_length, check: shot_duration, params: {label_prefix: usage, min: 2.0, max: 2.5}, severity: warn}
+  - {id: caption_time, check: caption_min_on_screen, params: {min: 3.0}, severity: warn}
+  - {id: caption_number, check: caption_count, params: {min: 1, max: 2}, severity: warn}
+  - {id: safe_zone, check: caption_safe_zone, params: {top: 100, bottom: 1680}, severity: warn}
+  - {id: end_card, check: end_card_required, params: {label_prefix: end_card}, severity: fail}
+  - {id: caption_lines, check: max_caption_lines, params: {max: 5}, severity: warn}
+  - {id: banned_words, check: banned_words, severity: fail}
+checklist:
+  - The meme text never covers eyes, mouth or the product on any of the six sample shots, and the block does not sit over a face when the creator lowers or lifts their head.
+  - The text is balanced (five short lines, no orphan word), readable at phone size and not smaller than about 50 px.
+  - The joke makes no claim, no age statement and no comment on someone's body that the brand cannot stand behind, and the human confirmed the concept.
+  - One creator appears from start to finish, and the starting point shown in the opening and the inset is really the creator's, not borrowed footage.
+  - The inset covers no face, has a clean border and disappears when its shot ends.
+  - The text is still on screen at the last frame before the end card, then gone.
+  - The music does not carry a licence problem (a track lifted from a third-party ad needs a human decision).
+  - The end card is the last shot and its zoom does not shake.
+example:
+  version: 1
+  name: example_meme_text
+  recipe: meme_text
+  format: {width: 1080, height: 1920, fps: 30}
+  segments:
+    - {type: clip, source: footage/creator_a_before_closeup_1.mp4, in: 2.0, out: 4.2, focus: [0.5, 0.45], label: "open:1"}
+    - {type: clip, source: footage/creator_a_before_closeup_2.mp4, in: 6.0, out: 8.2, focus: [0.5, 0.45], label: "open:2"}
+    - {type: clip, source: footage/creator_a_to_camera.mp4, in: 1.0, out: 3.8, focus: [0.5, 0.4], label: "reaction:1"}
+    - {type: clip, source: footage/creator_a_usage_1.mp4, in: 3.0, out: 5.4, focus: [0.5, 0.45], label: "usage:1"}
+    - {type: clip, source: footage/creator_a_usage_2.mp4, in: 8.0, out: 10.4, focus: [0.5, 0.45], label: "usage:2"}
+    - {type: clip, source: footage/creator_a_usage_3.mp4, in: 4.0, out: 6.4, focus: [0.5, 0.5], label: "usage:3"}
+    - {type: clip, source: footage/creator_a_usage_4.mp4, in: 11.0, out: 13.4, focus: [0.5, 0.5], label: "usage:4"}
+    - {type: clip, source: footage/creator_a_smile_1.mp4, in: 0.5, out: 2.5, focus: [0.5, 0.4], label: "smile:1"}
+    - {type: clip, source: footage/creator_a_smile_2.mp4, in: 3.0, out: 5.0, focus: [0.5, 0.4], label: "smile:2"}
+    - {type: image, source: brand/end_card.png, duration: 3.0, motion: zoom_in, background: blur, label: end_card}
+  overlays:
+    - {type: caption, style: meme, lines: ["When you promised", "no more kitchen gadgets", "this year and then", "your feed showed you", "this one 😅"], start: 0.0, end: 20.8, y: 1290, size: 52}
+    - {type: image, source: footage/creator_a_before_still.png, start: 4.4, end: 7.2, x: 640, y: 110}
+  audio: {music: music/track.m4a, from_reference: null, volume: 0.8, fade_in: 0.2, fade_out: 1.0}
+  output: {path: renders/example_meme_text.mp4, quality: final}

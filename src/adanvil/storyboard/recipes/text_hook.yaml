@@ -1,0 +1,98 @@
+id: text_hook
+name: Text hook on the brand's own footage
+summary: Rewrite a competitor's voiceless hook sentence for the brand and lay it over quick shots of the brand's own footage, ending on a product shot with a call to action.
+when_to_use: >
+  Use it when the reference has no voice, only a hook sentence burnt in over a demo and a trending sound (14 to 22 seconds),
+  and its sentence follows a social structure that transfers to any brand (promo urgency, a revealed "secret", reply to a
+  comment, gentle reminder, gratitude, a negative bait turned around). Do not use it when the sentence rests on a claim the
+  brand cannot make, when the reference is a testimonial that needs its own voice, or when you cannot write a text that keeps
+  the reference's structure.
+duration: {min: 14, max: 22}
+audio:
+  source: reference
+  notes: >
+    Keep the trending sound of the reference (its licence is a human decision), cut to the beat when you can. There is no
+    voice, the hook is the script.
+captions:
+  style: outline
+  y: 330
+  size: 62
+  notes: >
+    Native social look, white heavy text with a black outline and no box (a box ruins moving shots). Sentence case, one strong
+    hook only, never several variants. Keep the structure of the reference sentence and adapt it, do not reinvent it, and make
+    sure the age or status stated in the text fits the person on screen. A long sentence is split into two beats that follow
+    each other. Text sits on the free area of the frame, top (y 70 to 330) or bottom (y 1250 to 1500) depending on the shot,
+    never on a face. If the hook is a reply to a comment, the bubble is a real comment quoted word for word with no invented
+    author name, shown from 0 s at the bottom, off the faces.
+structure:
+  - slot: usage
+    role: demo
+    purpose: Open on the product in use so the hook sentence has a demonstration to sit on.
+    count: [3, 4]
+    shot_duration: [1.2, 3.5]
+    footage: Usage shots in different settings, the product visible and the gesture readable. If the text says "I" or a person speaks on camera, use one creator only; if the text is general (a narrator voice-over included) use several profiles.
+    caption: Beat one of the hook (default style), from 0 s.
+  - slot: payoff
+    role: payoff
+    purpose: Show the person enjoying the result, the emotional payoff of the hook.
+    count: [1, 3]
+    shot_duration: [2.0, 3.5]
+    footage: Smiling or satisfied shots in a different setting from the usage shots. A single fixed shot for the whole ad is not enough, always give both usage and payoff.
+    caption: Beat two of the hook, placed at the bottom of the frame when the face is high in the shot.
+  - slot: product
+    role: reveal
+    purpose: Reinforce what is being sold with quick product-only shots.
+    count: [0, 2]
+    shot_duration: [1.6, 2.0]
+    footage: Product-only shots showing the product exactly as sold today (current packaging, current version). Skip this slot if the ad already shows the product enough.
+    caption: None, the hook continues.
+    effects: Slow zoom from 1.00 to 1.04 over each shot.
+  - slot: end_card
+    role: cta
+    purpose: Close on a call to action with the product in view.
+    count: 1
+    shot_duration: [4.4, 4.4]
+    footage: One clean product shot with a calm area for text, current version. About 4.4 s (2.4 s was too short to read).
+    caption: The call to action in the box style, for example the guarantee line plus "Tap Learn more".
+rules:
+  - {id: total_duration, check: total_duration, params: {min: 14, max: 22}, severity: warn}
+  - {id: usage_shot_length, check: shot_duration, params: {label_prefix: usage, min: 1.2, max: 3.5}, severity: warn}
+  - {id: product_shot_length, check: shot_duration, params: {label_prefix: product, min: 1.6, max: 2.0}, severity: warn}
+  - {id: product_shot_floor, check: shot_duration, params: {label_prefix: product, min: 1.0}, severity: fail}
+  - {id: end_card_length, check: shot_duration, params: {label_prefix: end_card, min: 4.0, max: 4.8}, severity: warn}
+  - {id: caption_time, check: caption_min_on_screen, params: {min: 1.5}, severity: warn}
+  - {id: caption_number, check: caption_count, params: {min: 2, max: 4}, severity: warn}
+  - {id: safe_zone, check: caption_safe_zone, params: {top: 100, bottom: 1620}, severity: warn}
+  - {id: end_card, check: end_card_required, params: {label_prefix: end_card}, severity: fail}
+  - {id: caption_lines, check: max_caption_lines, params: {max: 3}, severity: warn}
+  - {id: banned_words, check: banned_words, severity: fail}
+checklist:
+  - The hook keeps the structure of the reference sentence, reads clearly in one pass and carries no claim, promise of a result or medical wording.
+  - The age or status in the text fits the person on screen, and a text in the first person, or a person speaking on camera, uses one creator for all shots.
+  - Text never covers a face, eyes or mouth, and each beat sits in the free area of its shot.
+  - The look is native (outline, no box), the first letter is a capital, emoji are consistent and none is cut off.
+  - The ad shows both the usage and the smiling payoff in different settings, not one fixed shot.
+  - Every product-only shot shows the product as sold today, and the end card shot is the current version.
+  - The call to action stays on screen at least 4 seconds and is fully readable.
+  - A reply-to-comment bubble, if any, quotes a real comment word for word with no invented author and hides no face.
+  - Shots from different sources match in colour (HDR clips tone-mapped, no red or dark shot next to a normal one).
+example:
+  version: 1
+  name: example_text_hook
+  recipe: text_hook
+  format: {width: 1080, height: 1920, fps: 30}
+  segments:
+    - {type: clip, source: footage/creator_a_usage_1.mp4, in: 3.0, out: 5.4, focus: [0.5, 0.45], label: "usage:1"}
+    - {type: clip, source: footage/creator_b_usage_2.mp4, in: 8.0, out: 10.4, focus: [0.5, 0.45], label: "usage:2"}
+    - {type: clip, source: footage/creator_c_usage_3.mp4, in: 4.0, out: 6.4, focus: [0.5, 0.5], label: "usage:3"}
+    - {type: clip, source: footage/creator_a_smile.mp4, in: 1.0, out: 3.6, focus: [0.5, 0.35], label: "payoff:1"}
+    - {type: clip, source: footage/creator_b_smile.mp4, in: 2.0, out: 4.4, focus: [0.5, 0.35], label: "payoff:2"}
+    - {type: clip, source: footage/product_box_table.mp4, in: 12.2, out: 14.0, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: "product:1"}
+    - {type: clip, source: footage/product_feature_on.mp4, in: 5.0, out: 6.8, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: "product:2"}
+    - {type: clip, source: footage/product_with_box.mp4, in: 0.0, out: 4.4, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, label: end_card}
+  overlays:
+    - {type: caption, style: outline, lines: ["Gentle reminder that you", "deserve a slower morning"], start: 0.0, end: 7.2, y: 330, size: 62}
+    - {type: caption, style: outline, lines: ["for yourself, every day ✨"], start: 7.2, end: 15.8, y: 1300, size: 62}
+    - {type: caption, style: box, lines: ["Satisfaction guaranteed ✨", "👇 Tap Learn more"], start: 15.8, end: 20.2, y: 1280, size: 46}
+  audio: {music: null, from_reference: footage/reference_ad.mp4, volume: 0.9, fade_in: 0.2, fade_out: 1.0}
+  output: {path: renders/example_text_hook.mp4, quality: final}

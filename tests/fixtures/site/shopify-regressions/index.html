@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <title>Brand – Tagline</title>
+    <meta name="description" content="A French euro-store fixture.">
+    <link rel="stylesheet" href="/shopify-regressions/styles.css">
+    <style>
+      :root {
+        --font-body-family: Assistant, sans-serif;
+        --font-heading-family: "Playfair Display", serif;
+      }
+      body { font-family: var(--font-body-family); }
+    </style>
+  </head>
+  <body>
+    <svg aria-label="Visa"><title>Visa</title></svg>
+    <svg aria-label="Mastercard"><title>Mastercard</title></svg>
+    <main>
+      <h1>Light running shoes</h1>
+      <h2>74.00 EUR</h2>
+      <p class="price">74.00 €</p>
+      <p><del>110.00 €</del></p>
+      <div id="cart-drawer">
+        <h2>Your cart is empty</h2>
+        <h2>0 Total:</h2>
+      </div>
+      <div class="localization-picker">
+        <h2>Pays/région</h2>
+        <select id="country-selector">
+          <option>CHF</option>
+          <option>EUR</option>
+        </select>
+      </div>
+      <h3>7</h3>
+      <h3>Hi</h3>
+      <script>
+        Shopify.currency = {"active":"EUR","rate":"1.0"};
+      </script>
+      <script src="https://cdn.shopify.com/s/assets/storefront.js"></script>
+    </main>
+  </body>
+</html>

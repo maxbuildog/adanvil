@@ -1,0 +1,129 @@
+id: ugc_talking
+name: Talking-head UGC (a creator speaks to camera)
+summary: One creator talks to camera from a hook to a call to action, cut on the pauses of the real speech (best take of each line, no hesitation), with B-roll of the product laid over the creator's voice, captions built from what is said, a low music bed and an end card.
+when_to_use: >
+  Use it when the footage is a creator talking to camera (a skincare routine, a coffee gadget, running shoes, a budgeting app,
+  a pet product, any niche) with written consent for paid advertising, ideally several takes of each line. The speech is the ad:
+  it carries the story, so keep the creator's own sound (audio.clips) and cut on the pauses instead of adding a voice-over.
+  Index the footage with speech first (library_index transcribes the clips with sound), pick the best take of each line with
+  speech_takes, and take the cut points from the clean_segments of speech_view. Do not use it when the creator says something
+  the brand may not claim (the banned_word_spoken warning tells you where), when there is no usable speech (use voiceover_ad
+  with a generated brand voice), when two people talk, or when the sound is noisy or cut off. Ask the compliance questions first.
+duration: {min: 18, max: 45}
+audio:
+  source: clips
+  notes: >
+    The sound is the creator's own, taken from the clip segments themselves (audio.clips true): it is brought to -15 LUFS on its
+    own and a licensed music bed sits under it at music_volume 0.2 to 0.3, audible only in the pauses and under the B-roll, never
+    fighting the voice. The sound of each cut is a 10 ms crossfade, so cut on the pauses given by speech_view clean_segments (a cut
+    inside a word raises cut_mid_word). Over a product shot the creator keeps talking: give that segment audio_from with the clip
+    of the creator and the in point where the voice continues (an L-cut), so the voice never stops when the picture changes. A
+    segment that is not a speaking shot (an image, a clip without sound) is silence under the music.
+captions:
+  style: outline
+  y: 1290
+  size: 56
+  notes: >
+    The captions come from the speech with one speech_captions overlay: mode chunks, max_words 3, case upper, style outline
+    (white text, black contour), y about 1290, size 56, keep_fillers false so hesitations never appear. They follow the real words
+    after every cut, so nothing is typed by hand and the text always matches the sound. Check one chunk with caption_preview
+    (overlay speech_captions, chunk_index, and the storyboard) before rendering. The safe zone applies: nothing on the face, eyes
+    or mouth. Add a written box or pill only for the offer or the guarantee, copied from the sales page.
+structure:
+  - slot: hook
+    role: hook
+    purpose: The opening line, said by the creator, in the best take of that line. It states the problem or the surprise in the viewer's words and makes the viewer stay.
+    count: 1
+    shot_duration: [1.5, 6.0]
+    footage: The best take of the opening line (speech_takes picks it), face close and centred, the first word within a third of a second of the cut. Cut from its clean segment, never from a take with a filler, a restart or a cut ending.
+    caption: Speech captions from 0 s.
+  - slot: problem
+    role: problem
+    purpose: What the creator lived before, in a sentence or two, so the viewer recognises the situation without a claim or a diagnosis.
+    count: [1, 2]
+    shot_duration: [2.0, 6.0]
+    footage: The same creator, same setting or a natural change of room, still talking to camera. Cut on the pauses of the clean segments, so no breath or hesitation stays.
+    caption: Speech captions.
+  - slot: demo
+    role: demo
+    purpose: Show the product and how it is used while the creator explains it. The creator keeps talking over the product shots.
+    count: [2, 4]
+    shot_duration: [1.2, 3.5]
+    footage: A mix of the creator holding the product and B-roll of the product in use (hands, close-ups, the gesture readable). Every B-roll segment carries audio_from pointing at the creator's clip, at the in point where the sentence continues, for exactly the length of the shot.
+    caption: Speech captions.
+    effects: A slow zoom from 1.00 to 1.04 on a product-only shot.
+  - slot: result
+    role: payoff
+    purpose: What changed for the creator, said with caution, in their own words, never a promise or a number of days.
+    count: [1, 2]
+    shot_duration: [2.0, 5.0]
+    footage: The creator again, relaxed and natural, a different mood from the problem shots. Cut from the clean segments of the best take.
+    caption: Speech captions.
+  - slot: cta
+    role: cta
+    purpose: The creator says what to do next, in one short sentence, to camera.
+    count: 1
+    shot_duration: [2.0, 4.5]
+    footage: The creator in the same framing as the hook, the call to action in one take with a complete ending (the last word is not cut).
+    caption: Speech captions, the last words stay readable until the end card.
+  - slot: end_card
+    role: cta
+    purpose: Close on the brand's call to action with the music alone.
+    count: 1
+    shot_duration: [2.5, 4.0]
+    footage: The brand's ready-made call-to-action image when it has one, else a clean product shot or an end card made from a product photo.
+    caption: The call to action is written on the card, no speech captions on it.
+rules:
+  - {id: total_duration, check: total_duration, params: {min: 18, max: 45}, severity: warn}
+  - {id: hook_length, check: shot_duration, params: {label_prefix: hook, min: 1.5, max: 6.0}, severity: warn}
+  - {id: demo_length, check: shot_duration, params: {label_prefix: demo, min: 1.2, max: 3.5}, severity: warn}
+  - {id: demo_floor, check: shot_duration, params: {label_prefix: demo, min: 0.6}, severity: fail}
+  - {id: end_card_length, check: shot_duration, params: {label_prefix: end_card, min: 2.5, max: 4.0}, severity: warn}
+  - {id: caption_number, check: caption_count, params: {min: 0, max: 3}, severity: warn}
+  - {id: safe_zone, check: caption_safe_zone, params: {top: 100, bottom: 1620}, severity: warn}
+  - {id: end_card, check: end_card_required, params: {label_prefix: end_card}, severity: fail}
+  - {id: caption_lines, check: max_caption_lines, params: {max: 2}, severity: warn}
+  - {id: banned_words, check: banned_words, severity: fail}
+checklist:
+  - Every segment carries the role of its slot, as listed by recipe_get (so the result slot is a payoff and the end_card slot a cta), never the slot name itself when it is not a role.
+  - One creator talks to camera for the whole ad, with written consent for paid advertising, and the footage has no watermark, no burnt-in text and no competitor material.
+  - The footage was indexed with speech, and the hook and every line come from the best take chosen with speech_takes (no hesitation, no restart, a complete ending, a natural speech rate and a good level).
+  - Every cut sits on a pause given by speech_view clean_segments, and the validation shows no cut_mid_word warning.
+  - The creator says nothing the brand may not claim (no banned_word_spoken warning, nothing medical, no result promised to everyone, no number of days, no claim about a named competitor).
+  - Over every product or B-roll shot the creator's voice continues without a gap (audio_from on the segment, in point where the sentence goes on), and the voice never stops when the picture changes.
+  - audio.clips is true and audio.music is a licensed track at music_volume 0.2 to 0.3, audible in the pauses and under the B-roll but never over the voice.
+  - The captions come from one speech_captions overlay in chunks of 3 words, upper case, outline, without hesitations, and a caption_preview of one chunk shows them in the safe zone and off the face.
+  - Prices, offer and guarantee are identical to the sales page and written in a readable box or on the end card, not improvised by the creator.
+  - The end card is the last segment, shows the current product and the call to action, and the music alone plays under it.
+  - Every product shot shows the product as sold today, checked one by one on the contact sheet, and shots from different sources match in colour.
+example:
+  version: 1
+  name: example_ugc_talking
+  recipe: ugc_talking
+  format: {width: 1080, height: 1920, fps: 30}
+  # Imaginary speech index (library_index with speech, then speech_takes and speech_view). Three takes of the opening line
+  # were filmed; speech_takes picked footage/creator_a_hook_2.mov (the first has a filler, the third ends on a cut word).
+  # footage/creator_a_hook_2.mov (5.0 s): "Honestly, I almost gave up on my mornings." said from 0.50 to 3.25.
+  #   clean segment: in 0.44, out 3.35.
+  # footage/creator_a_main.mov (18.0 s): the whole script in one take, phrases separated by 0.5 s pauses:
+  #   0.40-4.20   problem:  "Every morning was the same rush, and I was always late."      clean segment 0.34 to 4.30
+  #   4.75-6.80   demo:1    "Then a friend showed me this."                                 clean segment 4.69 to 6.90
+  #   7.30-9.35   demo:2    "It takes two minutes, no setup."                               clean segment 7.24 to 9.45
+  #   9.85-11.55  demo:3    "And the difference is crazy."                                  clean segment 9.79 to 11.65
+  #   12.05-14.10 result:   "Now I actually enjoy my mornings."                             clean segment 11.99 to 14.20
+  #   14.60-17.35 cta:      "Tap the link and try it for yourself."                         clean segment 14.54 to 17.45
+  # The B-roll of demo:2 and demo:3 plays over the creator's voice (audio_from at the clean segment's in point), so the
+  # creator keeps talking while the picture shows the product. Total = 2.91 + 3.96 + 2.21 + 2.21 + 1.86 + 2.21 + 2.91 + 3.0 = 21.27 s.
+  segments:
+    - {type: clip, source: footage/creator_a_hook_2.mov, in: 0.44, out: 3.35, focus: [0.5, 0.35], label: hook, role: hook}
+    - {type: clip, source: footage/creator_a_main.mov, in: 0.34, out: 4.30, focus: [0.5, 0.35], label: problem, role: problem}
+    - {type: clip, source: footage/creator_a_main.mov, in: 4.69, out: 6.90, focus: [0.5, 0.35], label: "demo:1", role: demo}
+    - {type: clip, source: footage/product_hands.mp4, in: 1.0, out: 3.21, focus: [0.5, 0.5], zoom: {from: 1.0, to: 1.04}, audio_from: {source: footage/creator_a_main.mov, in: 7.24}, label: "demo:2", role: demo}
+    - {type: clip, source: footage/product_in_use.mp4, in: 0.5, out: 2.36, focus: [0.5, 0.5], audio_from: {source: footage/creator_a_main.mov, in: 9.79}, label: "demo:3", role: demo}
+    - {type: clip, source: footage/creator_a_main.mov, in: 11.99, out: 14.20, focus: [0.5, 0.35], label: result, role: payoff}
+    - {type: clip, source: footage/creator_a_main.mov, in: 14.54, out: 17.45, focus: [0.5, 0.35], label: cta, role: cta}
+    - {type: image, source: brand/end_card.png, duration: 3.0, motion: zoom_in, label: end_card, role: cta}
+  overlays:
+    - {type: speech_captions, mode: chunks, max_words: 3, case: upper, style: outline, y: 1290, size: 56}
+  audio: {clips: true, music: music/track.m4a, music_volume: 0.25, start: 0.0}
+  output: {path: renders/example_ugc_talking.mp4, quality: final}

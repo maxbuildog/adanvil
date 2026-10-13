@@ -1,0 +1,54 @@
+{
+  "files": [
+    {
+      "role": "hands",
+      "target": "footage/hands_toast.webm",
+      "title": "File:Buena Vista Winery - September 2024 - Sarah Stierch 02.webm",
+      "page": "https://commons.wikimedia.org/wiki/File:Buena_Vista_Winery_-_September_2024_-_Sarah_Stierch_02.webm",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/e/e1/Buena_Vista_Winery_-_September_2024_-_Sarah_Stierch_02.webm",
+      "sha1": "33e3b50c9f7a08f5f10aea4ebe6f1cd5a165aa81",
+      "size_bytes": 12674494,
+      "license": "CC0"
+    },
+    {
+      "role": "product",
+      "target": "footage/candle_flameless.webm",
+      "title": "File:Flameless candle 1.webm",
+      "page": "https://commons.wikimedia.org/wiki/File:Flameless_candle_1.webm",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/9/92/Flameless_candle_1.webm",
+      "sha1": "24fcf8a37e9661346bfcc5d55a64d2e7a67f0dd2",
+      "size_bytes": 1891323,
+      "license": "CC0"
+    },
+    {
+      "role": "product",
+      "target": "footage/candle_pink.webm",
+      "title": "File:Pink candle burning.webm",
+      "page": "https://commons.wikimedia.org/wiki/File:Pink_candle_burning.webm",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/6/65/Pink_candle_burning.webm",
+      "sha1": "f82af5a902a1f5f6a6512e8ea69ce4049d930947",
+      "size_bytes": 700020,
+      "license": "CC0"
+    },
+    {
+      "role": "lifestyle",
+      "target": "footage/waterfall.webm",
+      "title": "File:Watagataki Falls (Video).webm",
+      "page": "https://commons.wikimedia.org/wiki/File:Watagataki_Falls_(Video).webm",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/8/86/Watagataki_Falls_%28Video%29.webm",
+      "sha1": "dcb15d4adc4c0efb5be28bfc01d2b29cf530458e",
+      "size_bytes": 23150486,
+      "license": "CC0"
+    },
+    {
+      "role": "product_image",
+      "target": "brand/jar.jpg",
+      "title": "File:Cosmetic jar MET 26.7.1442 EGDP012736.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Cosmetic_jar_MET_26.7.1442_EGDP012736.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/f/fc/Cosmetic_jar_MET_26.7.1442_EGDP012736.jpg",
+      "sha1": "3f53cf4f39c8d922b937ccd4581e1c5488a52f0f",
+      "size_bytes": 1394070,
+      "license": "CC0"
+    }
+  ]
+}

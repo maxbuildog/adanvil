@@ -1,0 +1,109 @@
+id: customer_diary
+name: Customer diary
+summary: Follow one real customer's own video as the thread of the ad, add short hands-only product shots, their before/after and their happy ending, then a guarantee end card.
+when_to_use: >
+  Use it when the brand has a real customer video (phone selfie, native text, a "Day 1, Day 4" style journey) with written
+  consent for paid advertising, ideally the original clips without burnt-in text. Do not use it when consent is missing, when
+  the video actually comes from an advertiser (an ad found in an ad library belongs to that advertiser, not to a customer), or
+  when the story is thin. Do not "enrich" a diary that already tells a story.
+duration: {min: 14, max: 22}
+audio:
+  source: either
+  notes: >
+    Prefer the customer's own sound or the music that goes with their video, and check that it is cleared. No voice-over is
+    added, the journey speaks for itself.
+captions:
+  style: outline_soft
+  y: 1320
+  size: 62
+  notes: >
+    Transparent captions (no box), medium-weight white text with a strong black outline so they stand out on moving phone
+    footage. Rewrite the customer's on-screen text identically in the brand's style, one hook only (theirs) and no variants. Put the text
+    at the bottom centre (y 1300 to 1340) on shots where the face is lifted and the top would land on the eyes. Numbers of
+    days or weeks come from the customer or the brand, never from timestamps in the video. Sentence case, at most two lines.
+structure:
+  - slot: problem
+    role: problem
+    purpose: Open with the customer's own problem shots and hook, so the viewer meets the starting point in their words.
+    count: [2, 3]
+    shot_duration: [1.5, 3.0]
+    footage: Their clips in the order they were filmed, framed as the customer framed them. Never add another person here.
+    caption: Their hook first, then a second sentence over the next shots (default style).
+    effects: remove_text with the mask method to erase their burnt-in text under the new transparent caption (a rectangular delogo box shows through transparent text).
+  - slot: hands
+    role: demo
+    purpose: Show the product clearly at the point where the customer has not filmed it.
+    count: [3, 4]
+    shot_duration: [0.6, 0.8]
+    footage: Hands and product only, current version, no face. Never use the face of another creator (it would break the journey and suggest the result is theirs). Keep it short, no more than about three seconds in total.
+    caption: None, the shots are too short to read anything.
+  - slot: before_after
+    role: proof
+    purpose: Put the customer's own before/after in the spotlight.
+    count: 1
+    shot_duration: [2.0, 3.0]
+    footage: The customer's clip with their own before inset, or their before and after side by side. End the segment on the frame you want to hold.
+    caption: A short day marker such as "Day 30" (the number comes from the customer or the brand), bottom of the frame.
+    effects: Freeze the last frame for about 1 s and zoom towards the inset (freeze with hold 1.0, zoom about 1.35, centre on the inset).
+  - slot: happy
+    role: payoff
+    purpose: Let the customer finish happy, in their own clips, in order and in one continuous run.
+    count: [2, 4]
+    shot_duration: [2.0, 3.5]
+    footage: Their later, happier clips, no repeated shot and no other person. Text at the bottom centre if their face is raised.
+    caption: One or two short lines in the customer's voice, words they actually used.
+  - slot: end_card
+    role: cta
+    purpose: Close on the product with the guarantee or the key offer written large.
+    count: 1
+    shot_duration: [3.0, 3.5]
+    footage: The product in front of its box, current version, with free space above it for text.
+    caption: The guarantee (or key offer) wording in two sizes, a smaller lead line and a very large key line, above the box (top of the frame, y about 180 to 400).
+rules:
+  - {id: total_duration, check: total_duration, params: {min: 14, max: 22}, severity: warn}
+  - {id: hands_shot_length, check: shot_duration, params: {label_prefix: hands, min: 0.6, max: 1.0}, severity: warn}
+  - {id: hands_shot_floor, check: shot_duration, params: {label_prefix: hands, min: 0.5}, severity: fail}
+  - {id: end_card_length, check: shot_duration, params: {label_prefix: end_card, min: 3.0, max: 3.6}, severity: warn}
+  - {id: caption_time, check: caption_min_on_screen, params: {min: 1.5}, severity: warn}
+  - {id: caption_number, check: caption_count, params: {min: 3}, severity: warn}
+  - {id: safe_zone, check: caption_safe_zone, params: {top: 100, bottom: 1620}, severity: warn}
+  - {id: end_card, check: end_card_required, params: {label_prefix: end_card}, severity: fail}
+  - {id: caption_lines, check: max_caption_lines, params: {max: 3}, severity: warn}
+  - {id: banned_words, check: banned_words, severity: fail}
+checklist:
+  - Written consent from the customer for paid advertising is on file, and the source is really the customer's (no advertiser ad taken for a customer video).
+  - The customer's burnt-in text is completely gone under the new caption (full-resolution crops at three instants, no smear or box outline visible).
+  - The only face in the ad is the customer's, and the hands-only shots show the product as sold today and no face.
+  - The hands-only insert is short (about 3 seconds) and does not repeat one shot twice.
+  - The before/after is the customer's own, not enhanced or reordered, and the freeze and zoom land on the inset.
+  - Captions sit on the free area of each shot, never on eyes or mouth, and on lifted-face shots they are at the bottom centre.
+  - Day counts and numbers were given by the customer or the brand, not inferred from the video.
+  - The guarantee wording matches the brand's real terms, and nothing in the customer's words is a medical claim.
+  - The end card is last, the big guarantee text fits the frame and every caption is still shown until its end time.
+example:
+  version: 1
+  name: example_customer_diary
+  recipe: customer_diary
+  format: {width: 1080, height: 1920, fps: 30}
+  segments:
+    - {type: clip, source: footage/customer_diary.mp4, in: 0.0, out: 2.8, focus: [0.5, 0.45], remove_text: {method: mask, box: [60, 880, 1020, 1120], extra_boxes: []}, label: "problem:1"}
+    - {type: clip, source: footage/customer_diary.mp4, in: 2.8, out: 5.6, focus: [0.5, 0.45], remove_text: {method: mask, box: [60, 880, 1020, 1120], extra_boxes: []}, label: "problem:2"}
+    - {type: clip, source: footage/product_in_hand.mp4, in: 12.0, out: 12.7, focus: [0.5, 0.5], label: "hands:1"}
+    - {type: clip, source: footage/product_in_hand.mp4, in: 20.0, out: 20.7, focus: [0.5, 0.5], label: "hands:2"}
+    - {type: clip, source: footage/product_in_hand.mp4, in: 31.0, out: 31.7, focus: [0.5, 0.5], label: "hands:3"}
+    - {type: clip, source: footage/product_in_hand.mp4, in: 48.0, out: 48.7, focus: [0.5, 0.5], label: "hands:4"}
+    - {type: clip, source: footage/customer_diary.mp4, in: 8.0, out: 9.6, focus: [0.5, 0.45], freeze: {hold: 1.0, zoom: 1.35, center: [800, 500]}, remove_text: {method: mask, box: [60, 880, 1020, 1120], extra_boxes: []}, label: "before_after:1"}
+    - {type: clip, source: footage/customer_diary.mp4, in: 14.0, out: 16.5, focus: [0.5, 0.4], remove_text: {method: mask, box: [60, 880, 1020, 1120], extra_boxes: []}, label: "happy:1"}
+    - {type: clip, source: footage/customer_diary.mp4, in: 22.0, out: 24.5, focus: [0.5, 0.4], remove_text: {method: mask, box: [60, 880, 1020, 1120], extra_boxes: []}, label: "happy:2"}
+    - {type: clip, source: footage/product_with_box.mp4, in: 0.0, out: 3.1, focus: [0.5, 0.6], zoom: {from: 1.0, to: 1.04}, label: end_card}
+  overlays:
+    - {type: caption, style: outline_soft, lines: ["My biggest struggle", "for years"], start: 0.0, end: 2.8, y: 1320, size: 62}
+    - {type: caption, style: outline_soft, lines: ["So I decided to try", "something new"], start: 2.8, end: 5.6, y: 1320, size: 62}
+    - {type: caption, style: outline_soft, lines: ["Day 30"], start: 8.6, end: 11.0, y: 1320, size: 62}
+    - {type: caption, style: outline_soft, lines: ["Now I actually look", "forward to it ✨"], start: 11.2, end: 13.8, y: 1320, size: 62}
+    - {type: caption, style: outline_soft, lines: ["Best thing I did", "for myself this month"], start: 13.8, end: 16.0, y: 1320, size: 62}
+    - {type: caption, style: outline, lines: ["Satisfaction guaranteed"], start: 16.0, end: 19.1, y: 180, size: 66}
+    # Placeholder key line: replace it with the brand's real guarantee terms.
+    - {type: caption, style: outline, lines: ["RISK FREE ✅"], start: 16.0, end: 19.1, y: 270, size: 104}
+  audio: {music: null, from_reference: footage/customer_diary.mp4, volume: 0.9, fade_in: 0.2, fade_out: 1.0}
+  output: {path: renders/example_customer_diary.mp4, quality: final}
