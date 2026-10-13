@@ -29,14 +29,58 @@ The demo above was made from the CC0 demo pack in `examples/demo/` (four Wikimed
 - Quality control with images: automatic checks, contact sheet of the result, full-resolution frames.
 - Detached background jobs for indexing, voice and rendering, so long work survives a dropped connection.
 
-## Quick start
+## Install
 
-Requirements:
+Pick one path. The first is the simplest.
 
-- Python 3.11 or newer, and [uv](https://docs.astral.sh/uv/) (it provides `uvx`).
-- ffmpeg 6.1 or newer, built with `libzimg`, on your `PATH`. Check with `ffmpeg -version`. If ffmpeg lives elsewhere, set `ADANVIL_FFMPEG` and `ADANVIL_FFPROBE` to the full paths.
+### 1. Claude Desktop extension (one click)
 
-Three commands:
+Download `adanvil-<version>.mcpb` from the [latest release](https://github.com/maxbuildog/adanvil/releases/latest), double-click it, and click Install in Claude Desktop. It asks for a projects folder and, optionally, a Freesound key (stored securely). You still need ffmpeg 6.1 or newer on your computer (`brew install ffmpeg`, `winget install Gyan.FFmpeg`, `sudo apt install ffmpeg`); if it is missing, the extension says so with the command for your system.
+
+### 2. Docker (no Python, no ffmpeg to install)
+
+```bash
+git clone https://github.com/maxbuildog/adanvil && cd adanvil
+docker build -t adanvil .
+```
+
+The image has ffmpeg 6.1, runs as a non-root user and speaks MCP over stdio. Mount the folder that holds your projects at `/projects`; the agent must give tool calls paths under `/projects` (for example `/projects/my-ad`).
+
+```bash
+# Claude Code
+claude mcp add adanvil -- docker run -i --rm -v "$PWD:/projects" adanvil
+```
+
+On Linux add `--user "$(id -u):$(id -g)"` so the files written to the folder belong to you.
+
+Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.adanvil]
+command = "docker"
+args = ["run", "-i", "--rm", "-v", "/home/you/ads:/projects", "adanvil"]
+tool_timeout_sec = 900
+default_tools_approval_mode = "approve"  # needed with approval_policy = "never" (codex exec)
+```
+
+Cursor, in `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "adanvil": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "/home/you/ads:/projects", "adanvil"]
+    }
+  }
+}
+```
+
+The image holds the base package only. Transcription is available with `docker build --build-arg EXTRAS=transcribe -t adanvil:transcribe .`. The voice, vision and music-generation environments (`adanvil voice-setup`, `vision_setup`, `music-setup`) are not included: they need gigabytes of models, so use the `uvx` path for them.
+
+### 3. uvx
+
+Requirements: Python 3.11 or newer, [uv](https://docs.astral.sh/uv/) (it provides `uvx`), and ffmpeg 6.1 or newer, built with `libzimg`, on your `PATH` (check with `ffmpeg -version`; if it lives elsewhere, set `ADANVIL_FFMPEG` and `ADANVIL_FFPROBE` to the full paths).
 
 ```bash
 # 1. Check the install (the first run downloads the package)
@@ -52,8 +96,6 @@ claude mcp add adanvil -- uvx --from git+https://github.com/maxbuildog/adanvil a
 The package is named `adanvil`. It installs two commands: `adanvil` (command line) and `adanvil-mcp` (the MCP server over stdio). `uvx adanvil-mcp` alone does not work, because `uvx` looks for a package with that name: always add `--from`. Once the package is on PyPI you can use `--from adanvil` instead of the Git URL.
 
 The agent creates the project folder and tells you where to drop your files: footage in `footage/`, the reference ad in `reference/`, music in `music/`, logo and end card in `brand/`. It learns the method from the `editing_guide` tool and from [`AGENTS.md`](AGENTS.md).
-
-### Other clients
 
 Codex, in `~/.codex/config.toml`:
 
@@ -128,7 +170,7 @@ Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the pipeline, [`docs
 
 The result depends on the model that drives AdAnvil. Reference analysis and shot choice are judgement work: use the strongest model you can (for example Claude Opus) for them. Smaller models execute the steps well, but they tend to copy the surface of a reference (same words, same shots) instead of rebuilding its logic for your brand.
 
-## Tools (42)
+## Tools (43)
 
 | Tool | What it does |
 | --- | --- |
@@ -144,7 +186,7 @@ The result depends on the model that drives AdAnvil. Reference analysis and shot
 | `speech_takes` | The best take of each line across several recordings of a script. |
 | `speech_refine` | Transcribe chosen clips again with a stronger model and the brand vocabulary (detached job). |
 | `library_overview` | Overview of the footage folders without indexing, plus a mosaic. |
-| `frame_view` | One full-resolution frame from a video or image. |
+| `frame_view` | The full-resolution frame ON SCREEN at `t` (`floor(t * fps)`, a `t` within 1 ms of a frame boundary is that frame) or at `frame`, with its exact time. |
 | `reference_decode` | Decode a reference video into shots, pacing, text, speech and sheets. |
 | `reference_breakdown` | Save the agent's shot-by-shot breakdown of the reference. |
 | `recipe_list` | List the ad recipes with purpose and duration. |
@@ -171,6 +213,7 @@ The result depends on the model that drives AdAnvil. Reference analysis and shot
 | `ad_score` | Creative score out of 100 of a rendered ad (hook, pacing, reading, story, platform safe zones, audio) with findings to fix and a safe zones preview. |
 | `variants_build` | The matrix of variants of a storyboard (hooks x bodies x calls to action, up to 24): patches or slot replacements, validated and saved, with a contact sheet of the first and last 3 s of each. |
 | `render_batch` | One detached job that renders many storyboards (and formats) with a shared segment cache and writes `renders/<batch>/manifest.csv`. |
+| `timeline_export` | Export a storyboard as OpenTimelineIO, Final Cut XML, EDL and SRT plus the overlay PNGs (named by storyboard index), the sound effects and the music levels, with the real media descriptors and a `not_exported` list, to finish it in DaVinci Resolve or Premiere Pro (CLI: `adanvil export`). |
 | `render_formats` | One storyboard in 9:16, 4:5 and 1:1 (re-cropped footage, captions re-laid out by bands, safe zones of the placement). |
 | `compare_pair` | How different a before and an after look (0 to 100), on the face or the whole frame, with a side-by-side preview, to pick the pair. |
 | `vision_setup` | Install the optional vision environment (search by sentence, automatic tags, product versions, faces). |

@@ -62,14 +62,12 @@ def test_qc_good_render_is_clean_and_writes_control_images(media, tmp_path: Path
 
     assert report.ok
     assert all(check.status == "pass" for check in report.checks)
-    assert [path.name for path in report.images] == [
-        "sheet.jpg",
-        "overlay_0.jpg",
-        "overlay_1.jpg",
-        "overlay_2.jpg",
-        "endcard.jpg",  # the render ends on a still: its frame is saved too (V2.8b)
-        "end.jpg",
-    ]
+    names = [path.name for path in report.images]
+    assert names[0] == "sheet.jpg" and names[-1] == "end.jpg"
+    # a crop is named after its storyboard overlay and a few words of its text; the render ends
+    # on a still, whose frame is end.jpg (no second copy as endcard.jpg since V2.10c)
+    assert [name.split("_")[1] for name in names[1:-1]] == ["0", "1", "2"]
+    assert "endcard.jpg" not in names
     assert report.summary["fail"] == 0
     assert {check.id for check in report.checks} >= {
         "decode",

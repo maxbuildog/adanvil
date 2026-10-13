@@ -23,3 +23,22 @@ jobs:
         run: uv run ruff check .
       - name: Test
         run: uv run pytest -q
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - name: Build the Claude Desktop extension
+        run: |
+          uv run python scripts/build_mcpb.py --check
+          uv run python scripts/build_mcpb.py
+          ls -l dist/*.mcpb
+      - name: Build the Docker image (not pushed)
+        run: docker build -t adanvil:ci .
+      - name: Docker image lists the tools
+        run: uv run pytest tests/test_packaging.py -q

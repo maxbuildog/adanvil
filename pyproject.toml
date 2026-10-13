@@ -1,6 +1,6 @@
 [project]
 name = "adanvil"
-version = "0.2.0"
+version = "0.3.0"
 description = "Agentic video ad editor: an MCP server that turns your brand's footage into ready-to-run 9:16 ads."
 readme = "README.md"
 license = "MIT"

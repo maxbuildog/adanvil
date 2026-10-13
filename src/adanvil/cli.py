@@ -232,6 +232,30 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument("--recipe")
     _add_output_flags(command)
 
+    command = commands.add_parser(
+        "export", help="export a storyboard as a timeline for DaVinci Resolve or Premiere Pro"
+    )
+    command.add_argument("dir", metavar="DIR")
+    command.add_argument("storyboard", metavar="STORYBOARD.json")
+    command.add_argument(
+        "--formats",
+        nargs="+",
+        choices=["otio", "fcp7xml", "edl", "srt"],
+        help="default: all four",
+    )
+    command.add_argument("--relative", action="store_true", help="relative media paths")
+    command.add_argument("--copy-media", action="store_true", help="copy sources to media/")
+    command.add_argument("--out", type=Path, help="write here instead of exports/<name>/")
+    command.add_argument(
+        "--media-root",
+        help="absolute folder a relative export will live in (written in the media paths)",
+    )
+    command.add_argument(
+        "--overwrite", action="store_true", help="replace an export of another media mode"
+    )
+    command.add_argument("--cache", type=Path, help="cache folder (default: the project's cache/)")
+    _add_output_flags(command)
+
     command = commands.add_parser("render", help="render a storyboard synchronously")
     command.add_argument("dir", metavar="DIR")
     command.add_argument("storyboard", metavar="STORYBOARD.json")
@@ -388,6 +412,35 @@ def _run(args: argparse.Namespace) -> int:
             for warning in result["warnings"]:
                 print(f"Warning: {warning}")
             print("Sources and licences: sfx/LICENCES.txt")
+        return 0
+
+    if args.command == "export":
+        from adanvil.export import export_timeline
+
+        board = _storyboard_argument(root, args.storyboard)
+        if isinstance(board, str):
+            board = json.loads((root / board).read_text(encoding="utf-8"))
+        result = export_timeline(
+            root,
+            board,
+            formats=args.formats,
+            relative=args.relative,
+            copy_media=args.copy_media,
+            media_root=args.media_root,
+            overwrite=args.overwrite,
+            out_dir=args.out,
+            cache_dir=args.cache,
+        )
+        if as_json:
+            _print(result, True)
+        else:
+            print(f"Export written to {result['folder']}")
+            for kind, file in result["files"].items():
+                print(f"  {kind}: {file}")
+            for warning in result["warnings"]:
+                print(f"Warning: {warning}")
+            for item in result["not_exported"]:
+                print(f"Not exported: {item}")
         return 0
 
     if args.command == "onboard":

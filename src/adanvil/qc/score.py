@@ -726,7 +726,7 @@ def _reading(ctx: _Context, entries: list[CaptionEntry]) -> Checks:
         moment = min(max(0.0, (entry.start + entry.end) / 2.0), max(0.0, ctx.duration - 0.05))
         with tempfile.TemporaryDirectory(prefix="adanvil-score-", dir=ctx.out_dir) as temporary:
             path = Path(temporary) / "frame.png"
-            extract_frame(ctx.video, moment, path)
+            extract_frame(ctx.video, moment, path, on_screen=True)
             with Image.open(path) as opened:
                 frame = opened.convert("RGB")
         frame = frame.resize(
@@ -1288,7 +1288,7 @@ def _images(
     moment = min(max(0.0, moment), max(0.0, ctx.duration - 0.05))
     with tempfile.TemporaryDirectory(prefix="adanvil-score-", dir=ctx.out_dir) as temporary:
         frame_path = Path(temporary) / "mid.png"
-        extract_frame(ctx.video, moment, frame_path)
+        extract_frame(ctx.video, moment, frame_path, on_screen=True)
         with Image.open(frame_path) as opened:
             frame = opened.convert("RGB")
         size = items[0].get("frame_size") if items else None
@@ -1318,7 +1318,7 @@ def _images(
         target = ctx.out_dir / f"finding_{number + 1}_{finding['id']}.jpg"
         with tempfile.TemporaryDirectory(prefix="adanvil-score-", dir=ctx.out_dir) as temporary:
             raw = Path(temporary) / "frame.png"
-            extract_frame(ctx.video, when, raw, width=540)
+            extract_frame(ctx.video, when, raw, width=540, on_screen=True)
             with Image.open(raw) as opened:
                 opened.convert("RGB").save(target, format="JPEG", quality=88)
         images.append(target)

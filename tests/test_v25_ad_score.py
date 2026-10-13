@@ -884,7 +884,7 @@ def test_the_guides_describe_the_score_the_zones_and_the_pair_rule() -> None:
     )[0]
     for tool in ("ad_score", "compare_pair"):
         assert f"`{tool}`" in readme
-    assert "Tools (42)" in agents and "Tools (42)" in skill and "Tools (42)" in readme
+    assert "Tools (43)" in agents and "Tools (43)" in skill and "Tools (43)" in readme
     assert (REPO / "src" / "adanvil" / "assets" / "EDITING_GUIDE.md").read_bytes() == (
         REPO / "docs" / "EDITING_GUIDE.md"
     ).read_bytes()

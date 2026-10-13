@@ -1,0 +1,225 @@
+{
+  "manifest_version": "0.4",
+  "name": "adanvil",
+  "display_name": "AdAnvil",
+  "version": "0.3.0",
+  "description": "Agentic video ad editor: turns your brand's footage into ready-to-run 9:16 ads. Needs ffmpeg 6.1 or newer installed on your computer.",
+  "author": {
+    "name": "maxbuildog"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maxbuildog/adanvil.git"
+  },
+  "icon": "icon.png",
+  "server": {
+    "type": "uv",
+    "entry_point": "server/main.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${__dirname}",
+        "python",
+        "server/main.py"
+      ],
+      "env": {
+        "ADANVIL_PROJECTS_DIR": "${user_config.projects_folder}",
+        "FREESOUND_API_KEY": "${user_config.freesound_api_key}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "ad_score",
+      "description": "Score a rendered ad out of 100 for creative quality, with findings to fix."
+    },
+    {
+      "name": "brand_get",
+      "description": "Read the current brand profile and brief."
+    },
+    {
+      "name": "brand_onboard",
+      "description": "Run brand onboarding step one or two."
+    },
+    {
+      "name": "caption_preview",
+      "description": "Render a caption or comment over a real 9:16 frame."
+    },
+    {
+      "name": "compare_pair",
+      "description": "Measure how different a before and an after look, to rank candidate pairs."
+    },
+    {
+      "name": "editing_guide",
+      "description": "Return the editing doctrine for footage, copy, rendering and QC."
+    },
+    {
+      "name": "end_card",
+      "description": "Compose a clean end card image from a real product photo."
+    },
+    {
+      "name": "frame_view",
+      "description": "Extract one full-resolution frame from a project video or image."
+    },
+    {
+      "name": "job_status",
+      "description": "Read a queued, running, completed or failed render, batch, voice, index or refine job."
+    },
+    {
+      "name": "library_annotate",
+      "description": "Merge annotations into one catalogue entry."
+    },
+    {
+      "name": "library_index",
+      "description": "Index or refresh media under a project-relative folder or file."
+    },
+    {
+      "name": "library_overview",
+      "description": "Overview of the footage folders without indexing, plus a mosaic."
+    },
+    {
+      "name": "library_search",
+      "description": "Search indexed footage using annotations and technical metadata."
+    },
+    {
+      "name": "library_view",
+      "description": "Return one catalogue entry and its contact sheet."
+    },
+    {
+      "name": "music_beats",
+      "description": "Beat times of a music track, as it will play in the ad."
+    },
+    {
+      "name": "music_fetch",
+      "description": "Download a track from music_search into music/, with its licence."
+    },
+    {
+      "name": "music_generate",
+      "description": "Make an instrumental track locally (optional ACE-Step environment), as a job."
+    },
+    {
+      "name": "music_profile",
+      "description": "Tempo, loudness and energy of the music tracks, to match a reference."
+    },
+    {
+      "name": "music_search",
+      "description": "Find music whose licence lets an ad use it (commercial use and modification)."
+    },
+    {
+      "name": "project_init",
+      "description": "Create an AdAnvil project skeleton."
+    },
+    {
+      "name": "project_read_text",
+      "description": "Read a UTF-8 project text file using the project's safe path rules."
+    },
+    {
+      "name": "qc_run",
+      "description": "Run technical QC on a rendered project-relative video."
+    },
+    {
+      "name": "recipe_get",
+      "description": "Return one complete recipe, including rules and example."
+    },
+    {
+      "name": "recipe_list",
+      "description": "List available ad recipes with purpose and duration."
+    },
+    {
+      "name": "reference_breakdown",
+      "description": "Save the agent's shot-by-shot breakdown of a decoded reference."
+    },
+    {
+      "name": "reference_decode",
+      "description": "Decode a reference video into shots, pacing, text, speech and sheets."
+    },
+    {
+      "name": "render_batch",
+      "description": "Queue ONE background job that renders several storyboards in order."
+    },
+    {
+      "name": "render_formats",
+      "description": "Render one storyboard in several formats: 9:16, 4:5, 1:1."
+    },
+    {
+      "name": "render_start",
+      "description": "Validate and queue a background render."
+    },
+    {
+      "name": "sfx_list",
+      "description": "List the sound effects of the project's sfx/ folder, and build the pack."
+    },
+    {
+      "name": "speech_refine",
+      "description": "Transcribe chosen clips again with a stronger model and replace their words."
+    },
+    {
+      "name": "speech_takes",
+      "description": "Pick the best take of each line across several recordings of a script."
+    },
+    {
+      "name": "speech_view",
+      "description": "Read the speech of one indexed clip and get safe cuts for it."
+    },
+    {
+      "name": "storyboard_patch",
+      "description": "Edit a saved storyboard in place: changes is a list of {path, value}."
+    },
+    {
+      "name": "storyboard_save",
+      "description": "Save a storyboard in the project as storyboards/<name>.json and return its path."
+    },
+    {
+      "name": "storyboard_schema",
+      "description": "Return the JSON Schema for Storyboard v1."
+    },
+    {
+      "name": "storyboard_snap",
+      "description": "Move the cuts of a storyboard onto the beats of its music."
+    },
+    {
+      "name": "storyboard_validate",
+      "description": "Validate a storyboard object or project-relative JSON file."
+    },
+    {
+      "name": "timeline_export",
+      "description": "Export a storyboard as an editable timeline for DaVinci Resolve or Premiere Pro."
+    },
+    {
+      "name": "variants_build",
+      "description": "Build the matrix of variants of one storyboard: hooks x bodies x calls to action."
+    },
+    {
+      "name": "vision_setup",
+      "description": "Install the optional vision environment (once, several minutes, about 2.5 GB)."
+    },
+    {
+      "name": "voice_generate",
+      "description": "Queue a checked voice-over generation job."
+    },
+    {
+      "name": "voice_view",
+      "description": "Read a voice manifest and suggest final-timeline shot boundaries."
+    }
+  ],
+  "tools_generated": false,
+  "user_config": {
+    "projects_folder": {
+      "type": "directory",
+      "title": "Projects folder",
+      "description": "Folder where AdAnvil keeps your ad projects (footage, brand, renders).",
+      "required": false,
+      "default": "${DOCUMENTS}/AdAnvil"
+    },
+    "freesound_api_key": {
+      "type": "string",
+      "title": "Freesound API key (optional)",
+      "description": "Adds Freesound to the music search. Leave empty to use Openverse only.",
+      "sensitive": true,
+      "required": false
+    }
+  }
+}

@@ -425,7 +425,12 @@ def plan_sticker(
         begin = start + number / fps
         if begin >= end:
             break
-        finish = end if number == len(steps) - 1 else min(end, start + (number + 1) / fps)
+        # one state at a time: a state never runs past the start of the next one. Only a
+        # ``draw`` holds its last (complete) state to the end; a ``pop`` settles after its
+        # last frame, below.
+        finish = min(end, start + (number + 1) / fps)
+        if number == len(steps) - 1 and overlay.animation == "draw":
+            finish = end
         states.append(_State(begin, finish, progress, scale))
     if overlay.animation == "pop" and states and states[-1].scale != 1.0:
         settled = start + len(steps) / fps

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 from fractions import Fraction
@@ -453,6 +454,23 @@ def detect_cuts(path: str | Path, *, threshold: float = 0.3) -> list[float]:
     return sorted({round(timestamp, 3) for timestamp in timestamps})
 
 
+FRAME_TOLERANCE = 0.001  # seconds
+
+
+def frame_on_screen(t: float, fps: float | None) -> tuple[int, float]:
+    """The frame displayed at time ``t`` of a video at ``fps``: its number ``floor(t * fps)``
+    (a ``t`` within 1 ms before a frame boundary counts as that frame) and its exact start time.
+    Without a frame rate, ``(round(t), t)`` is not guessed: the number is ``-1`` and ``t`` is
+    returned unchanged."""
+
+    if not fps or fps <= 0:
+        return -1, t
+    # a time within 1 ms before a frame boundary is that frame: 10.9333 s (printed to four
+    # decimals) at 30 fps is frame 328, not 327
+    number = max(0, math.floor(t * fps + FRAME_TOLERANCE * fps + 1e-6))
+    return number, number / fps
+
+
 def extract_frame(
     path: str | Path,
     t: float,
@@ -461,13 +479,25 @@ def extract_frame(
     width: int | None = None,
     keyframe: bool = False,
     threads: int | None = None,
+    on_screen: bool = False,
 ) -> Path:
     """Extract one PNG frame, seeking before input and optionally scaling its width.
 
     ``keyframe`` decodes only keyframes and takes the one at or before ``t`` (cheap on
     large sources, but the frame can lie earlier than ``t``); ``threads`` sets the
-    decoder's thread count.
+    decoder's thread count. ``on_screen`` returns the frame displayed at ``t``
+    (``floor(t * fps)``), where a plain seek returns the first frame at or after ``t``,
+    which is the next shot when ``t`` falls inside the last frame before a cut.
     """
+    if on_screen and not keyframe:
+        try:
+            fps = probe(path).fps
+        except Exception:
+            fps = None
+        number, _start = frame_on_screen(t, fps)
+        if number >= 0 and fps:
+            # a quarter frame before the frame start: the first frame at or after that is it
+            t = max(0.0, (number - 0.25) / fps)
     args: list[str] = []
     if keyframe:
         args.extend(["-skip_frame", "nokey", "-noaccurate_seek"])

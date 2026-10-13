@@ -26,7 +26,7 @@ from tests.test_v28c_variants_usability import _base, _face_document, _project
 # The face cores of a real segment of a test ad (1:1, "Pas forcément !" from 7.9 to 8.9 s,
 # measured on 09/10 with the detector on the frames of the source clip): the head rises and turns
 # while the caption stays, so one frame is not enough.
-LUMI_LOOKS = [
+SAMPLE_LOOKS = [
     (7.92, [(176.0, 219.0, 769.0, 948.0)]),
     (8.16, [(237.0, 171.0, 856.0, 854.0)]),
     (8.40, [(269.0, 88.0, 854.0, 739.0)]),
@@ -59,9 +59,9 @@ def test_a_move_is_never_noted_off_a_face_when_the_check_rejects_it(tmp_path: Pa
     root = _project(tmp_path)
     document = _face_document()
     document["overlays"][0].update({"lines": ["Pas forcément !"], "y": 1400})
-    moved, notes = _layout(root, document, LUMI_LOOKS)
+    moved, notes = _layout(root, document, SAMPLE_LOOKS)
     box = _final_box(root, moved)
-    covered_at = first_covered(box, LUMI_LOOKS)
+    covered_at = first_covered(box, SAMPLE_LOOKS)
     off_a_face = [n for n in notes if "off a face" in n]
     if covered_at is not None:
         assert not off_a_face, (box, notes)  # never "moved off a face" on a rejected position
@@ -70,7 +70,7 @@ def test_a_move_is_never_noted_off_a_face_when_the_check_rejects_it(tmp_path: Pa
         assert off_a_face, notes
     # the old layout looked at four moments only and put the caption across the eyes
     # (y 160 to 195 at 8.4 s); the position kept must not be on the face at 8.4 s
-    at_840 = [look for look in LUMI_LOOKS if look[0] == 8.40]
+    at_840 = [look for look in SAMPLE_LOOKS if look[0] == 8.40]
     assert first_covered(box, at_840) is None, box
 
 

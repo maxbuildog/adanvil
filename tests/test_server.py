@@ -54,6 +54,7 @@ TOOL_NAMES = {
     "variants_build",
     "render_batch",
     "render_formats",
+    "timeline_export",
 }
 
 

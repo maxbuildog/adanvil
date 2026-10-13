@@ -984,7 +984,7 @@ def test_the_guides_describe_sound_design() -> None:
         for name in ("AGENTS.md", "skill/SKILL.md", "docs/EDITING_GUIDE.md", "README.md")
     }
     for name in ("AGENTS.md", "skill/SKILL.md"):
-        for word in ("Tools (42)", "sfx_list", "music_beats", "storyboard_snap"):
+        for word in ("Tools (43)", "sfx_list", "music_beats", "storyboard_snap"):
             assert word in texts[name], (name, word)
     for name in ("AGENTS.md", "skill/SKILL.md", "docs/EDITING_GUIDE.md"):
         for word in (
@@ -992,7 +992,7 @@ def test_the_guides_describe_sound_design() -> None:
             "every second cut", "-16 LUFS",
         ):  # fmt: skip
             assert word in texts[name], (name, word)
-    assert "Tools (42)" in texts["README.md"] and "sfx_list" in texts["README.md"]
+    assert "Tools (43)" in texts["README.md"] and "sfx_list" in texts["README.md"]
     assert (repo / "src" / "adanvil" / "assets" / "EDITING_GUIDE.md").read_bytes() == (
         repo / "docs" / "EDITING_GUIDE.md"
     ).read_bytes()

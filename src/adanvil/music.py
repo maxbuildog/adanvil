@@ -727,6 +727,56 @@ _LEGACY_LICENCE = re.compile(r"\blicen[cs]e\s+([^,;()]+)", re.IGNORECASE)
 _ATTRIBUTION = re.compile(r'Attribution required:\s*"(.*)"\.?\s*$')
 
 
+_URL = re.compile(r"\((https?://[^)\s]+)\)")
+_FETCHED_LINE = re.compile(
+    r'^\s*"(?P<title>.+?)"\s+by\s+(?P<author>.+?),\s+(?P<licence>CC0 1\.0|Public Domain Mark 1\.0'
+    r"|CC BY-SA \d\.\d|CC BY \d\.\d|CC BY-SA|CC BY)\b(?P<tail>.*)$"
+)
+
+
+def _ledger_details(rest: str, licence: str) -> dict[str, Any]:
+    """The title, author and source (and its URL) written on a ``LICENCES.txt`` line, those that
+    are there: the line ``music_fetch`` writes (``"Title" by Author, CC BY 3.0 (licence url),
+    source id (url), fetched ...``) or the hand-written ``Title, Author, Source id, licence X``."""
+
+    rest = rest.strip()
+    details: dict[str, Any] = {}
+    fetched = _FETCHED_LINE.match(rest)
+    if fetched:
+        details["title"] = fetched.group("title").strip()
+        details["author"] = fetched.group("author").strip()
+        tail = fetched.group("tail")
+        urls = _URL.findall(tail)
+        if len(urls) >= 2:
+            details["licence_url"] = urls[0]
+            details["url"] = urls[1]
+            between = tail.split(urls[0], 1)[1].split(urls[1], 1)[0]
+            source = between.strip(" ,)(").rsplit("(", 1)[0].strip(" ,)(")
+            if source:
+                details["source"] = source
+        elif urls:
+            details["licence_url"] = urls[0]
+        return details
+    marker = re.search(r",?\s*licen[cs]e\s", rest, re.IGNORECASE)
+    head = rest[: marker.start()] if marker else rest
+    known = _KNOWN_LICENCE.search(head)
+    if known:
+        head = head[: known.start()]
+    parts = [part.strip() for part in head.strip(" ,").split(", ") if part.strip()]
+    if len(parts) >= 3:
+        details["title"] = ", ".join(parts[:-2])
+        details["author"] = parts[-2]
+        details["source"] = parts[-1]
+    elif len(parts) == 2:
+        details["title"], details["author"] = parts
+    elif len(parts) == 1:
+        details["title"] = parts[0]
+    link = _URL.search(rest)
+    if link and not licence.startswith("CC"):
+        details["url"] = link.group(1)
+    return details
+
+
 def read_ledger_record(root: Path, relative: str) -> dict[str, Any] | None:
     """The licence of ``relative`` read from its line in ``music/LICENCES.txt`` (matched by file
     name; the last line wins), or None. Used when the file has no ``.licence.json`` sidecar.
@@ -761,6 +811,7 @@ def read_ledger_record(root: Path, relative: str) -> dict[str, Any] | None:
             "attribution_text": attribution.group(1) if attribution else "",
             "title": None,
             "ledger_line": number,
+            **_ledger_details(rest, licence),
         }
     return found
 
@@ -805,6 +856,7 @@ def music_licence(root: Path, relative: str | None) -> dict[str, Any] | None:
         "licence_url": record.get("licence_url"),
         "title": record.get("title"),
         "author": record.get("author"),
+        "source": record.get("source"),
         "source_url": record.get("url"),
         "read_from": origin,
         "attribution_required": required,

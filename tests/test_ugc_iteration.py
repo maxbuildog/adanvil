@@ -1195,7 +1195,7 @@ def test_the_guides_describe_the_new_features() -> None:
     guide = (repo / "docs" / "EDITING_GUIDE.md").read_text(encoding="utf-8")
     for text in (agents, skill):
         for word in (
-            "Tools (42)",
+            "Tools (43)",
             "storyboard_save",
             "storyboard_patch",
             "karaoke",

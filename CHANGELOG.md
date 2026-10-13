@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.3.0 (2026-10-13)
+
+Install in one step (Claude Desktop extension, Docker image) and hand an ad to a human editor (`timeline_export`: OpenTimelineIO, Final Cut Pro 7 XML for Premiere Pro and DaVinci Resolve, CMX 3600 EDL, SRT and the captions as transparent PNGs, with the sound effects, music levels, licences and an honest list of what an editor format cannot carry). Each step below was checked by an agent editing a real ad. Not yet proven: an actual import into Premiere Pro or DaVinci Resolve.
+
+V2.10e: last small fixes of the export.
+
+- A clip or split/reveal panel that needs more source than its file has is clamped to the file followed by a freeze of the last frame (what the render does), with a warning; `storyboard_validate` warns `panel_source_short`.
+- Sound effect files are declared at their real length (OTIO exact; XML whole frames with the trim named in the warnings).
+- Variable-frame-rate sources are listed with their measured average. The licences and attribution texts of the music and sound effects are in `README.txt` and the result (`licences`).
+- Tests: `test_v210e_export_last.py`.
+
+V2.10d: the follow-up to the r22 check of the export.
+
+- `qc_run`: a render report written before entries carried `overlay` and `text` is named from the storyboard, so crops are `overlay_<storyboard index>_<few words>.jpg` through the MCP tool in every path.
+- `timeline_export`: `export_manifest.json` lists the files an export owns; a re-export cleans them, and a folder without the manifest is refused unless `overwrite=true` (which clears only export files). The relative and portable EDL uses relative paths and `relink.txt` states the Premiere Pro finding. One nominal frame-rate rule (the catalog's), every differing source listed, all timecodes start at 01:00:00:00, segments counted from 0 everywhere, sfx tracks named with their storyboard overlay index, sfx clips floored to their file length.
+- Tests: `test_v210d_export_followup.py`.
+
+V2.10c: the fixes from the r21 check of the export.
+
+- `timeline_export`: captions are markers on `V1` (no more tracks of offline clips); speed follows the xmeml and CMX 3600 conventions (`out - in = end - start` with a Time Remap filter, source out = source in + record duration with an `M2` line); every `<file>` and OTIO `available_range` has the real rate, size, duration and start timecode of its source, in/out are counted in the file's own frames and EDL source times start at the file's timecode; absolute paths keep the project path (no symlink resolution), OTIO `target_url` is a `file://` URL, a relative export writes `file://localhost/RELINK_ROOT/...` plus `relink.txt` (or absolute paths with `media_root`), `copy_media` prefixes colliding names with a hash and does not copy the overlay PNGs, and each media mode has its own folder (`-relative`, `-portable`; `overwrite=true` to replace another mode); sound effects (one audio track each) and the music level and fades (Audio Levels keyframes in the XML) are exported; the result and a `README.txt` carry a `not_exported` list; overlays are named by storyboard index everywhere.
+- QC: crops are named `overlay_<index>_<few words>.jpg`, never cut a neighbouring caption in half, `endcard.jpg` is no longer saved when `end.jpg` is the same frame, and `overlay_visible` values carry their unit.
+- `frame_view` takes `frame=` as well as `t`, and a `t` within 1 ms of a frame boundary is that frame (10.9333 s at 30 fps is frame 328).
+- A badge `pop` draws one state at a time (the last pop frame no longer runs to the end of the sticker over the settled state).
+- Tests: `test_v210c_export_fixes.py`.
+
+V2.10b: export to an editing program, and the fixes from the r20 check.
+
+- `timeline_export` (CLI `adanvil export`): writes `exports/<name>/` with an OpenTimelineIO file (hand-written, no dependency: video tracks, speed as a time warp, stills, captions as clips with markers, overlays, audio), a Final Cut Pro 7 XML (xmeml 4), a CMX 3600 EDL (video cuts), an SRT of every caption at its final time, and each caption, sticker and card as a full-canvas transparent PNG listed in `overlays.json`. Absolute media paths by default, `relative` and `copy_media` for a portable folder.
+- `frame_view` returns the frame on screen at `t` (`floor(t * fps)`) and states its time (`frame`, `frame_t`); the QC and score samples use the same rule, which removes the false `caption_on_face` at a cut.
+- A `LICENCES.txt` line also gives the title, author and source of the track.
+- QC: a caption crop holds the whole caption box (translucent boxes and shadows included) and is named after its storyboard overlay (the render report tags each entry with `overlay`); split screen and reveal images are returned; the variants contact sheet is `<base>_<first variant>_<n>v_sheet.jpg`.
+- `render.compose.build_overlays` is the overlay half of the render, shared with the export.
+- Tests: `test_v210b_export.py`.
+
+V2.10a: install in one step.
+
+- Claude Desktop extension (MCPB, manifest 0.4, server type `uv`): `packaging/mcpb/` and `scripts/build_mcpb.py` build `dist/adanvil-<version>.mcpb` (`--check` verifies the manifest). Version and tools list are generated from the package and the server; settings for the projects folder and an optional sensitive `FREESOUND_API_KEY`. The launcher stops with the install command for the system when ffmpeg or ffprobe is missing.
+- `Dockerfile` and `.dockerignore`: Ubuntu 24.04 (ffmpeg 6.1), non-root user, `adanvil-mcp` over stdio, `/projects` volume, `EXTRAS` build argument (for example `transcribe`). The voice, vision and music-generation environments are not in the image.
+- CI builds the Docker image and the `.mcpb` file (nothing is pushed).
+- README "Install" has three paths (Claude Desktop extension, Docker, `uvx`); `AGENTS.md` and `skill/SKILL.md` mention the other two.
+- Tests: `test_packaging.py` (manifest, bundle, launcher message, Docker end to end when Docker is present).
+
 ## 0.2.0 (2026-10-13)
 
 V2.9b: fixes from the Opus check of V2.8e and V2.9.

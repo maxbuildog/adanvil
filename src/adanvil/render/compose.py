@@ -776,88 +776,19 @@ def _render_final(
     os.replace(temporary, output)
 
 
-def compose(
+def build_overlays(
     sb: Storyboard,
     *,
     root: Path,
-    cache: Cache | None = None,
-    quality: str | None = None,
-    progress: Callable[[dict[str, Any]], None] | None = None,
-) -> RenderReport:
-    """Render all storyboard stages and return a report for the final ad.
+    cache: Cache,
+    timeline: list[dict[str, Any]],
+    total: float,
+    warnings: list[str],
+) -> tuple[list[Placement | InsetLayer], list[dict[str, Any]], VoiceTrack | None]:
+    """Every overlay of the storyboard as the final encode draws it: the pictures with their
+    spans and places, the report entries (each tagged with the index of its storyboard overlay)
+    and the voice track. Voice and speech captions are expanded to their final times."""
 
-    ``progress`` receives JSON-shaped events after each segment and when the
-    final encode begins and ends.
-    """
-
-    root = Path(root).resolve()
-    cache = cache or Cache(root / "cache")
-    selected_quality = normalise_quality(quality) or sb.output.quality
-    if selected_quality not in {"preview", "final"}:
-        raise ValueError("quality must be 'preview' or 'final'")
-    selected_quality_value = cast(Literal["preview", "final"], selected_quality)
-
-    warnings: list[str] = []
-    mezzanines: list[Path] = []
-    timeline: list[dict[str, Any]] = []
-    real_durations: list[float] = []
-    start = 0.0
-    frame_tolerance = 1.0 / sb.format.fps
-    # Mezzanines are built by a pool; they are collected in storyboard order, so the
-    # timeline, warnings and progress events read exactly as in a sequential render.
-    # The mezzanine format does not depend on the quality, so a final render after a
-    # preview (or the reverse) finds every segment in the cache.
-    with ThreadPoolExecutor(max_workers=max(1, min(config.workers(), len(sb.segments)))) as pool:
-        futures = [
-            pool.submit(render_segment, segment, root=root, cache=cache, fmt=sb.format)
-            for segment in sb.segments
-        ]
-        try:
-            for index, segment in enumerate(sb.segments):
-                mezzanine = futures[index].result()
-                mezzanines.append(mezzanine)
-                expected = segment_duration(segment)
-                info = probe(mezzanine)
-                actual = info.duration or expected
-                if abs(actual - expected) > frame_tolerance:
-                    warnings.append(
-                        f"segment {index} duration {actual:.3f}s differs from "
-                        f"expected {expected:.3f}s by more than one frame"
-                    )
-                end = start + actual
-                entry = {
-                    "label": getattr(segment, "label", None) or Path(segment.source).stem,
-                    "start": start,
-                    "end": end,
-                    "source": segment.source,
-                }
-                if isinstance(segment, SplitSegment):
-                    entry["type"] = "split"
-                elif isinstance(segment, RevealSegment):
-                    entry["type"] = "reveal"
-                    entry["direction"] = segment.direction
-                    entry["hold_before"] = segment.hold_before
-                    entry["sweep"] = segment.sweep
-                timeline.append(entry)
-                real_durations.append(actual)
-                start = end
-                if progress is not None:
-                    progress(
-                        {
-                            "stage": "segments",
-                            "done": index + 1,
-                            "total": len(sb.segments),
-                            "unit": "segments",
-                            "message": f"rendered segment {index + 1}/{len(sb.segments)}",
-                        }
-                    )
-        except BaseException:
-            for future in futures:
-                future.cancel()
-            raise
-
-    total = sum(real_durations)
-    concat = _concat_mezzanines(mezzanines, cache)
     provider = _emoji_provider(sb, root)
     report_overlays: list[dict[str, Any]] = []
     final_overlays: list[Placement | InsetLayer] = []
@@ -874,9 +805,15 @@ def compose(
         voice_manifest = _resolve_project_path(root, sb.audio.voice, "audio.voice")
         voice_track = load_track(voice_manifest)
     speech_library: SpeechLibrary | None = None
-    for overlay in sb.overlays:
+    # ``source_of[k]`` is where the k-th kept storyboard overlay starts in the expanded list,
+    # ``source_indexes[k]`` its index in the storyboard: the report names each entry by it.
+    source_of: list[int] = []
+    source_indexes: list[int] = []
+    for source_index, overlay in enumerate(sb.overlays):
         if isinstance(overlay, SfxOverlay):
             continue  # a sound: mixed into the audio bed below
+        source_of.append(len(expanded_overlays))
+        source_indexes.append(source_index)
         if isinstance(overlay, SpeechCaptionsOverlay):
             if not sb.audio.clips:
                 raise ValueError("speech_captions overlay requires audio.clips: true")
@@ -908,7 +845,16 @@ def compose(
 
     accent = brand_accent(root)
     badge_color = brand_accent_color(root)
-    for overlay in expanded_overlays:
+    tagged_from = 0
+    tagged_source = 0
+    for position, overlay in enumerate(expanded_overlays):
+        owner = max(
+            (k for k, begin in enumerate(source_of) if begin <= position), default=0
+        )
+        for entry in report_overlays[tagged_from:]:
+            entry.setdefault("overlay", tagged_source)
+        tagged_from = len(report_overlays)
+        tagged_source = source_indexes[owner] if source_indexes else 0
         if overlay.start >= total:
             warnings.append(
                 f"{overlay.type} overlay at {overlay.start:g}s starts at or after video end"
@@ -934,6 +880,7 @@ def compose(
                     highlight=accent,
                 )
                 if placements:
+                    entry.setdefault("text", " ".join(chunk.lines))
                     final_overlays.extend(placements)
                     report_overlays.append(entry)
             continue
@@ -1052,9 +999,109 @@ def compose(
         else:
             png = _caption_png(overlay, sb, provider, cache, warnings, accent)
         final_overlays.append(Placement(png, overlay.start, end))
-        report_overlays.append(
-            {"type": overlay.type, "start": overlay.start, "end": end, "png": png}
-        )
+        written: dict[str, Any] = {
+            "type": overlay.type,
+            "start": overlay.start,
+            "end": end,
+            "png": png,
+        }
+        if isinstance(overlay, CaptionOverlay):
+            written["text"] = " ".join(overlay.lines)
+        elif isinstance(overlay, CommentOverlay):
+            written["text"] = overlay.text
+        report_overlays.append(written)
+
+    for entry in report_overlays[tagged_from:]:
+        entry.setdefault("overlay", tagged_source)
+
+    return final_overlays, report_overlays, voice_track
+
+
+def compose(
+    sb: Storyboard,
+    *,
+    root: Path,
+    cache: Cache | None = None,
+    quality: str | None = None,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> RenderReport:
+    """Render all storyboard stages and return a report for the final ad.
+
+    ``progress`` receives JSON-shaped events after each segment and when the
+    final encode begins and ends.
+    """
+
+    root = Path(root).resolve()
+    cache = cache or Cache(root / "cache")
+    selected_quality = normalise_quality(quality) or sb.output.quality
+    if selected_quality not in {"preview", "final"}:
+        raise ValueError("quality must be 'preview' or 'final'")
+    selected_quality_value = cast(Literal["preview", "final"], selected_quality)
+
+    warnings: list[str] = []
+    mezzanines: list[Path] = []
+    timeline: list[dict[str, Any]] = []
+    real_durations: list[float] = []
+    start = 0.0
+    frame_tolerance = 1.0 / sb.format.fps
+    # Mezzanines are built by a pool; they are collected in storyboard order, so the
+    # timeline, warnings and progress events read exactly as in a sequential render.
+    # The mezzanine format does not depend on the quality, so a final render after a
+    # preview (or the reverse) finds every segment in the cache.
+    with ThreadPoolExecutor(max_workers=max(1, min(config.workers(), len(sb.segments)))) as pool:
+        futures = [
+            pool.submit(render_segment, segment, root=root, cache=cache, fmt=sb.format)
+            for segment in sb.segments
+        ]
+        try:
+            for index, segment in enumerate(sb.segments):
+                mezzanine = futures[index].result()
+                mezzanines.append(mezzanine)
+                expected = segment_duration(segment)
+                info = probe(mezzanine)
+                actual = info.duration or expected
+                if abs(actual - expected) > frame_tolerance:
+                    warnings.append(
+                        f"segment {index} duration {actual:.3f}s differs from "
+                        f"expected {expected:.3f}s by more than one frame"
+                    )
+                end = start + actual
+                entry = {
+                    "label": getattr(segment, "label", None) or Path(segment.source).stem,
+                    "start": start,
+                    "end": end,
+                    "source": segment.source,
+                }
+                if isinstance(segment, SplitSegment):
+                    entry["type"] = "split"
+                elif isinstance(segment, RevealSegment):
+                    entry["type"] = "reveal"
+                    entry["direction"] = segment.direction
+                    entry["hold_before"] = segment.hold_before
+                    entry["sweep"] = segment.sweep
+                timeline.append(entry)
+                real_durations.append(actual)
+                start = end
+                if progress is not None:
+                    progress(
+                        {
+                            "stage": "segments",
+                            "done": index + 1,
+                            "total": len(sb.segments),
+                            "unit": "segments",
+                            "message": f"rendered segment {index + 1}/{len(sb.segments)}",
+                        }
+                    )
+        except BaseException:
+            for future in futures:
+                future.cancel()
+            raise
+
+    total = sum(real_durations)
+    concat = _concat_mezzanines(mezzanines, cache)
+    final_overlays, report_overlays, voice_track = build_overlays(
+        sb, root=root, cache=cache, timeline=timeline, total=total, warnings=warnings
+    )
 
     bed = _audio_bed(sb, root, cache, total, real_durations)
     bed, sfx_report = _with_sfx(

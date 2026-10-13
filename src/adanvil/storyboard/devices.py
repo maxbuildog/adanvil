@@ -19,6 +19,8 @@ The rules and their codes (errors block rendering, warnings do not):
 - ``caption_covered_by_inset`` (warning): a caption is (partly) hidden under an inset.
 - ``inset_audio`` (error) and ``inset_audio_replaces`` / ``inset_audio_silent`` (warnings): an
   inset with ``audio`` needs ``audio.clips`` and no other voice during its span.
+- ``panel_source_short`` (warning): a panel or side at its speed needs more source than the file
+  has, so the render holds its last frame.
 - ``sticker_out_of_frame`` (error): a sticker leaves the frame.
 - ``sticker_render`` (error): a sticker cannot be drawn.
 """
@@ -95,6 +97,7 @@ def _check_panel_source(
     box: tuple[int, int, int, int],
     errors: list[Issue],
     warnings: list[Issue],
+    span: float | None = None,
 ) -> tuple[int, int] | None:
     """The source checks of one panel (or reveal side) of the box ``box``: where it starts,
     its crop, how much of it the cover crop keeps. Returns the size of the picture the box is
@@ -111,6 +114,19 @@ def _check_panel_source(
                 f"{where}.in",
             )
         )
+    if info.kind == "video" and info.duration is not None and span is not None:
+        _begin, wanted_end = _played_range(panel, span)
+        if wanted_end > info.duration + 0.05 and panel.in_ < info.duration - 0.05:
+            late = (wanted_end - info.duration) / max(panel.speed, 1e-9)
+            warnings.append(
+                _issue(
+                    "panel_source_short",
+                    f"panel_source_short: {who} needs source up to {wanted_end:.3f}s at its speed "
+                    f"but '{panel.source}' lasts {info.duration:.3f}s: the last frame is held for "
+                    f"{late:.2f}s. Start it earlier, shorten the segment or lower the speed.",
+                    f"{where}.in",
+                )
+            )
     if not info.width or not info.height:
         return None
     _x, _y, panel_w, panel_h = box
@@ -226,6 +242,7 @@ def check_splits(
                 boxes[number],
                 errors,
                 warnings,
+                segment.duration,
             )
 
 
@@ -302,6 +319,7 @@ def check_reveals(
                 frame,
                 errors,
                 warnings,
+                segment.duration,
             )
             if size is not None:
                 shapes.append((name, *size))

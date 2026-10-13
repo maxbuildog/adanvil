@@ -29,7 +29,8 @@ from adanvil import __version__
 from adanvil.batch import existing_files, plan_items, variant_ids
 from adanvil.brand import load_brand
 from adanvil.endcard import emoji_provider, write_end_card
-from adanvil.ffmpeg import extract_frame, probe
+from adanvil.export import export_timeline
+from adanvil.ffmpeg import extract_frame, frame_on_screen, probe
 from adanvil.formats import FORMATS, ratio_of
 from adanvil.jobs import mark_dead_runner, read_job, resolve_job_file, start_job
 from adanvil.library import (
@@ -409,12 +410,17 @@ def _extract_or_open_frame(root: Path, source: str, t: float) -> tuple[Path, boo
         info = probe(source_path)
     except Exception as exc:
         raise _tool_error(f"Could not probe source {source!r}: {exc}") from exc
-    frame_path = _frame_path(root, source_path, t)
+    if info.kind == "video":
+        # the frame displayed at t (floor(t * fps)), keyed by its own start time
+        _number, shown = frame_on_screen(t, info.fps)
+        frame_path = _frame_path(root, source_path, round(shown, 6))
+    else:
+        frame_path = _frame_path(root, source_path, t)
     frame_path.parent.mkdir(parents=True, exist_ok=True)
     if info.kind == "video":
         if not frame_path.is_file():
             try:
-                extract_frame(source_path, t, frame_path)
+                extract_frame(source_path, t, frame_path, on_screen=True)
             except Exception as exc:
                 raise _tool_error(f"Could not extract frame from {source!r}: {exc}") from exc
         return frame_path, True
@@ -1855,19 +1861,99 @@ def build_server() -> MCPServer:
         return result
 
     @server.tool(structured_output=False)
-    def frame_view(project_dir: str, source: str, t: float) -> list[Any]:
+    def frame_view(
+        project_dir: str, source: str, t: float | None = None, frame: int | None = None
+    ) -> list[Any]:
         """Extract one full-resolution frame from a project video or image.
 
-        Use it to inspect the exact moment behind a timecode; the saved frame
-        is under cache/frames/.
+        Give the time ``t`` (seconds) or the frame number ``frame`` (video only, counted from
+        0). Returns the frame ON SCREEN at ``t`` (``floor(t * fps)``): at 2.87 s of a 30 fps
+        video that is the frame starting at 2.867 s, not the next one at 2.900 s. A ``t``
+        within 1 ms of a frame boundary is that frame (10.9333 s at 30 fps is frame 328), so a
+        time printed to four decimals lands on the right frame. ``frame_t`` is the frame's exact
+        start time and ``frame`` its number (video only). Use it to inspect the exact moment
+        behind a timecode; the saved frame is under cache/frames/.
         """
 
         root = _project(project_dir)
-        frame_path, _ = _extract_or_open_frame(root, source, t)
-        return [
-            {"path": _relative_path(root, frame_path), "source": source, "t": t},
-            _image(frame_path),
-        ]
+        if (t is None) == (frame is None):
+            raise _tool_error("give exactly one of t (seconds) or frame (a frame number)")
+        if frame is not None:
+            if frame < 0:
+                raise _tool_error("frame must be zero or positive")
+            try:
+                frame_rate = probe(_safe_project_path(root, source, "source")).fps
+            except Exception as exc:
+                raise _tool_error(f"Could not probe source {source!r}: {exc}") from exc
+            if not frame_rate:
+                raise _tool_error(f"{source} has no frame rate: use t instead of frame")
+            t = frame / frame_rate
+        assert t is not None
+        frame_path, is_video = _extract_or_open_frame(root, source, t)
+        shown: dict[str, Any] = {
+            "path": _relative_path(root, frame_path),
+            "source": source,
+            "t": t,
+        }
+        if is_video:
+            try:
+                fps = probe(_safe_project_path(root, source, "source")).fps
+            except Exception:
+                fps = None
+            number, start = frame_on_screen(t, fps)
+            if number >= 0:
+                shown["frame"] = number
+                shown["frame_t"] = round(start, 4)
+                shown["fps"] = fps
+        return [shown, _image(frame_path)]
+
+    @server.tool(structured_output=False)
+    def timeline_export(
+        project_dir: str,
+        storyboard: dict[str, Any] | str,
+        formats: list[str] | None = None,
+        relative: bool = False,
+        copy_media: bool = False,
+        media_root: str | None = None,
+        overwrite: bool = False,
+    ) -> dict[str, Any]:
+        """Export a storyboard as an editable timeline for DaVinci Resolve or Premiere Pro.
+
+        Writes ``exports/<name>/`` with ``<name>.otio`` (OpenTimelineIO: video tracks, speed as
+        a time warp, stills, captions as markers on V1, overlay pictures, voice, music and one
+        audio track per sound effect), ``<name>.xml`` (Final Cut Pro 7 XML, read by Premiere
+        Pro and Resolve, with the real rate, size and duration of each source, speed as Time
+        Remap, music and sound effect levels and fades), ``<name>.edl`` (CMX 3600, video cuts
+        only, the fallback), ``<name>.srt`` (every caption at its final time), ``overlays/``
+        (each caption, sticker and card as a full-canvas transparent PNG named after its
+        storyboard overlay index, with its place in ``overlays.json``) and ``README.txt``.
+        ``formats`` is any of ``otio``, ``fcp7xml``, ``edl``, ``srt`` (all by default). Media
+        paths are absolute, as the project sees them; ``relative`` writes
+        ``exports/<name>-relative/`` with paths relative to the folder (and a ``relink.txt``),
+        ``copy_media`` writes ``exports/<name>-portable/`` with the used sources copied into
+        ``media/``; ``media_root`` is the absolute folder a relative export will live in. A
+        folder that holds an export of another media mode is only replaced with
+        ``overwrite=true``. The result lists ``warnings`` (what is approximated) and
+        ``not_exported`` (what no editor format here carries: grading, reframing, pop
+        animations, split layout, loudness, the EDL audio).
+        """
+
+        root = _project(project_dir)
+        raw = _load_storyboard_raw(root, storyboard)
+        try:
+            result = export_timeline(
+                root,
+                raw,
+                formats=formats,
+                relative=relative,
+                copy_media=copy_media,
+                media_root=media_root,
+                overwrite=overwrite,
+            )
+        except Exception as exc:
+            raise _tool_error(f"Timeline export failed: {exc}") from exc
+        result["folder"] = _relative_path(root, Path(result["folder"]))
+        return result
 
     @server.tool(structured_output=False)
     def recipe_list() -> list[dict[str, Any]]:
@@ -2228,7 +2314,14 @@ def build_server() -> MCPServer:
         }
         images: list[Any] = []
         if contact_sheet:
-            sheet = root / "renders" / "variants" / f"{payload['base']}_variants_sheet.jpg"
+            # named after the variant set, so two matrices from one base never overwrite
+            first = built[0].name if built else "none"
+            sheet = (
+                root
+                / "renders"
+                / "variants"
+                / f"{payload['base']}_{first}_{len(built)}v_sheet.jpg"
+            )
             try:
                 made, notes = variants_sheet(root, built, sheet, cache=Cache(root / "cache"))
                 payload["contact_sheet"] = _relative_path(root, made)
@@ -2705,7 +2798,7 @@ def build_server() -> MCPServer:
         """Run technical QC on a rendered project-relative video.
 
         Pass a job id or saved report path when available. Inspect the returned
-        sheet, the end card frame (``endcard.jpg``, per format) and up to four overlay
+        sheet, the end card frame (``end.jpg``) and up to four overlay
         crops before delivery. ``storyboard`` is the EFFECTIVE storyboard of that render (the
         one of its format after the re-layout: ``renders/<batch>/_storyboards/<name>.json``,
         found by itself next to a batch render): the overlay crops are then taken where its
@@ -2764,6 +2857,13 @@ def build_server() -> MCPServer:
                 inline.append(_image(path))
         crops = [path for path in image_paths if path.name.startswith("overlay_")][:4]
         inline.extend(_image(path) for path in crops)
+        # a split screen (and a reveal) frame listed in ``images`` is returned too
+        pictures = [
+            path
+            for path in image_paths
+            if path.name.startswith(("split_", "reveal_"))
+        ][:4]
+        inline.extend(_image(path) for path in pictures)
         return [payload, *inline]
 
     @server.tool(structured_output=False)

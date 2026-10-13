@@ -302,7 +302,7 @@ def rendered_faces(
 
     with tempfile.TemporaryDirectory(prefix="adanvil-faces-") as folder:
         path = Path(folder) / "frame.png"
-        extract_frame(Path(video), max(0.0, moment), path, width=width)
+        extract_frame(Path(video), max(0.0, moment), path, width=width, on_screen=True)
         with Image.open(path) as opened:
             size = opened.size
         pictures = engine.detect_faces([path])

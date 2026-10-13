@@ -705,7 +705,7 @@ def test_tools_build_variants_and_render_formats_through_the_server(tmp_path: Pa
             return payload, error, queued, final
 
     payload, error, queued, final = anyio.run(scenario)
-    assert payload["count"] == 2 and payload["contact_sheet"].endswith("_variants_sheet.jpg")
+    assert payload["count"] == 2 and payload["contact_sheet"].endswith("_demo_a_go_2v_sheet.jpg")
     assert [v["name"] for v in payload["variants"]] == ["demo_a_go", "demo_b_go"]
     assert (root / "storyboards" / "demo_a_go.json").is_file()
     assert (root / "storyboards" / "demo_a_go.variant.json").is_file()

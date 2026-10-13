@@ -397,7 +397,7 @@ def test_ad_score_flags_a_caption_on_a_face_in_every_format(tmp_path: Path) -> N
         )
     flagged = next(check for check in qc.checks if check.id == "caption_on_face")
     assert flagged.status == "warn"
-    assert any(path.name == "overlay_0.jpg" for path in qc.images)
+    assert any(path.name.startswith("overlay_0") for path in qc.images)
 
 
 # 8 ------------------------------------------------------------------ per-format override
@@ -477,7 +477,7 @@ def test_qc_crops_follow_the_relaid_overlay(tmp_path: Path) -> None:
     work.mkdir()
     _layout_crops(clip, 7.0, model, boxes, out, [], images, work)
     assert images
-    first = next(p for p in images if p.name == "overlay_0.jpg")
+    first = next(p for p in images if p.name.startswith("overlay_0"))
     left, top, right, bottom = boxes[0]
     factor = 216 / model.format.width
     expected_w = min(216, round(right * factor + 80)) - max(0, round(left * factor - 80))
