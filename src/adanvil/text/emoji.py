@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import os
-import urllib.request
+import uuid
 import warnings
 from pathlib import Path
 from typing import Protocol
 
 from PIL import Image
+
+from adanvil import netguard
+
+_MAX_EMOJI_BYTES = 1024 * 1024  # a Twemoji PNG is a few KB
+_MAX_EMOJI_SIDE = 512  # and 72 px wide
 
 
 def _is_base(codepoint: int, following: str | None = None) -> bool:
@@ -91,6 +96,25 @@ def _variants(cluster: str) -> list[str]:
     return list(dict.fromkeys((preferred, alternate, with_fe0f)))
 
 
+def _download_emoji(url: str, target: Path) -> None:
+    """Fetch one emoji PNG into ``target`` through the guarded client: to a temporary file
+    first, checked as a real, small PNG, then moved into place. A partial or foreign file is
+    never left in the cache."""
+
+    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.part")
+    try:
+        netguard.fetch_to_file(
+            url, temporary, timeout=20.0, max_bytes=_MAX_EMOJI_BYTES, deadline=60.0
+        )
+        with Image.open(temporary) as image:
+            if image.format != "PNG" or max(image.size) > _MAX_EMOJI_SIDE:
+                raise ValueError(f"{url} is not a small PNG")
+            image.load()
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 class TwemojiProvider:
     def __init__(self, cache_dir: Path | None = None, version: str = "17.0.3") -> None:
         default_cache = Path.home() / ".cache" / "adanvil"
@@ -118,7 +142,7 @@ class TwemojiProvider:
                     f"{codepoints}.png"
                 )
                 try:
-                    urllib.request.urlretrieve(url, str(target))
+                    _download_emoji(url, target)
                 except Exception:
                     continue
             try:

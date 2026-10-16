@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import shutil
 import unicodedata
@@ -18,6 +19,7 @@ from adanvil.ffmpeg import MediaInfo
 from adanvil.media.cache import Cache
 from adanvil.media.sheet import contact_sheet
 from adanvil.project import resolve_in_project
+from adanvil.safeio import replace_bytes
 from adanvil.speech import store as speech_store
 from adanvil.speech import transcribe as speech_transcribe
 from adanvil.speech.model import SpeechData
@@ -237,12 +239,14 @@ def _keyframe_windows(
 def _image_sheet(path: Path, output: Path) -> None:
     from PIL import Image
 
+    encoded = io.BytesIO()
     with Image.open(path) as image:
         width = 540
         height = max(1, round(image.height * width / image.width))
         image.convert("RGB").resize((width, height), Image.Resampling.LANCZOS).save(
-            output, format="JPEG", quality=90, optimize=True
+            encoded, format="JPEG", quality=90, optimize=True
         )
+    replace_bytes(output, encoded.getvalue())  # a link planted at ``output`` is replaced
 
 
 def _index_file(

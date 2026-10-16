@@ -229,9 +229,9 @@ def _cta_document(text: str, extra: str | None = None) -> dict[str, Any]:
 def test_cta_text_tells_two_ctas_apart(tmp_path: Path) -> None:
     root = _project(tmp_path)
     _, a = copy_texts(root, _cta_document("Click now"))
-    _, b = copy_texts(root, _cta_document("Satisfied or refunded 60 days", extra="Click now"))
+    _, b = copy_texts(root, _cta_document("Satisfied or refunded 30 days", extra="Click now"))
     assert a == "caption: Click now"
-    assert b == "caption: Satisfied or refunded 60 days | caption: Click now"
+    assert b == "caption: Satisfied or refunded 30 days | caption: Click now"
     assert a != b
     # the hook text is unchanged
     hook, _ = copy_texts(root, _cta_document("Click now"))
@@ -524,7 +524,7 @@ def test_badge_can_be_centered(how: dict[str, str]) -> None:
 
     document = _base()
     document["overlays"].append(
-        {"type": "sticker", "kind": "badge", "text": "60 jours", "y": 900, "start": 0, **how}
+        {"type": "sticker", "kind": "badge", "text": "30 jours", "y": 900, "start": 0, **how}
     )
     model = Storyboard.model_validate(document)
     badge = model.overlays[-1]

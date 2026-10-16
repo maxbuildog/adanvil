@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-from adanvil.ffmpeg import probe, run
+from adanvil.ffmpeg import MAX_SECONDS, probe, run
 
 _LUFS_RE = re.compile(r"\bI:\s*(-?(?:\d+(?:\.\d+)?|inf))\s+LUFS", re.IGNORECASE)
 
@@ -27,11 +27,15 @@ _RMS_RE = re.compile(
 )
 
 
-def _positive_duration(value: float, name: str = "duration") -> float:
-    """Validate and return a duration accepted by ffmpeg filters."""
+def _positive_duration(
+    value: float, name: str = "duration", limit: float | None = MAX_SECONDS
+) -> float:
+    """Validate and return a duration accepted by ffmpeg filters (at most ``limit`` seconds)."""
     value = float(value)
     if not math.isfinite(value) or value <= 0:
         raise ValueError(f"{name} must be a finite number greater than zero")
+    if limit is not None and value > limit:
+        raise ValueError(f"{name} must be at most {limit:g} seconds (got {value:g})")
     return value
 
 
@@ -1048,7 +1052,7 @@ def beat_grid(src: Path, *, start: float = 0.0, duration: float | None = None) -
         raise ValueError("start must be a finite number greater than or equal to zero")
     wanted = _BEAT_MAX_SECONDS
     if duration is not None:
-        wanted = min(_positive_duration(duration), _BEAT_MAX_SECONDS)
+        wanted = min(_positive_duration(duration, limit=None), _BEAT_MAX_SECONDS)
     source_duration, _ = _audio_or_error(src)
     if start >= source_duration:
         raise ValueError(f"No audio remains in {src} at start={start}")

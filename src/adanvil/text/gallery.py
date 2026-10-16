@@ -72,7 +72,7 @@ def _samples() -> list[tuple[str, TextSpec]]:
             TextSpec(
                 style="comment",
                 look="facebook",
-                lines=["Réponse au commentaire d'une cliente"],
+                lines=["Réponse au commentaire d'un client"],
                 reactions=12,
                 y=1420,
             ),
@@ -82,8 +82,8 @@ def _samples() -> list[tuple[str, TextSpec]]:
             TextSpec(
                 style="comment",
                 look="tiktok",
-                header="Réponse au commentaire d'une cliente",
-                lines=["Oui, le résultat dure vraiment ✅"],
+                header="Réponse au commentaire d'un client",
+                lines=["Oui, il reste chaud toute la journée ✅"],
                 y=1420,
             ),
         ),

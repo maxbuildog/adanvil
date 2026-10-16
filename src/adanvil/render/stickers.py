@@ -504,6 +504,7 @@ def sticker_placements(
         if not png.is_file():
             png.parent.mkdir(parents=True, exist_ok=True)
             temporary = Path(f"{png}.tmp{png.suffix}")
+            temporary.unlink(missing_ok=True)
             try:
                 picture.save(temporary, format="PNG")
                 os.replace(temporary, png)

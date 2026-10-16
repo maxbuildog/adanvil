@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from adanvil.project import resolve_in_project
+from adanvil.safeio import replace_text
 from adanvil.vocab import (
     EMOTION_VALUES,
     ROLE_VALUES,
@@ -243,8 +244,10 @@ def breakdown_reference(
         "summary": summary,
     }
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "breakdown.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    replace_text(
+        output_dir / "breakdown.json",
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
     )
     saved = (output_dir / "breakdown.json").relative_to(project_root).as_posix()
     return {**summary, "breakdown": saved}

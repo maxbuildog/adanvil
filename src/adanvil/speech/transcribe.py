@@ -36,6 +36,16 @@ SILENT = "silent_audio"  # the audio stream exists but carries no sound: nothing
 
 DEFAULT_MODEL = "base"  # indexing: fast and good enough to search what a clip says
 REFINE_MODEL = "medium"  # captions: ``speech_refine`` on the clips that are used
+# The model names an agent may ask for. The operator's own choice, ``ADANVIL_SPEECH_MODEL``,
+# stays free (a local model folder, a distilled model...).
+WHISPER_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3", "large-v3-turbo")
+# Revisions of the Systran repositories that were tested; the other models follow their branch.
+# The voice worker holds the same table (``adanvil.voice.worker``): a test keeps them equal.
+WHISPER_REVISIONS = {
+    "base": "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66",
+    "small": "536b0662742c02347bc0e980a01041f333bce120",
+    "medium": "08e178d48790749d25932bbc082711ddcfdfbc4f",
+}
 LEVEL_STEP = 0.1  # seconds per level value kept in the sidecar
 _SAMPLE_RATE = 16_000
 _SILENCE_DB = -60.0  # every one-second window under this: the clip is silent
@@ -65,6 +75,18 @@ def speech_model() -> str:
     """The indexing model: ``ADANVIL_SPEECH_MODEL`` or ``base``."""
 
     return os.environ.get("ADANVIL_SPEECH_MODEL", "").strip() or DEFAULT_MODEL
+
+
+def check_model_name(name: str) -> str:
+    """``name`` when a transcription may load that model, else a ``ValueError`` listing the
+    names that are allowed. The model of ``ADANVIL_SPEECH_MODEL`` is the operator's and passes."""
+
+    operator = os.environ.get("ADANVIL_SPEECH_MODEL", "").strip()
+    if name in WHISPER_MODELS or (name and name == operator):
+        return name
+    raise ValueError(
+        f"the transcription model {name!r} is not allowed: use one of {', '.join(WHISPER_MODELS)}"
+    )
 
 
 def auto_enabled() -> bool:
@@ -281,7 +303,7 @@ def transcribe_clips(
     """
 
     project_root = Path(project_root).resolve()
-    model_name = model or speech_model()
+    model_name = check_model_name(model or speech_model())
     outcomes: list[SpeechOutcome | None] = [None] * len(sources)
 
     def finish(index: int, outcome: SpeechOutcome) -> None:
@@ -345,8 +367,11 @@ def transcribe_clips(
         if prompt is None:
             prompt = speech_prompt(project_root)
         if kind == "whisper" and order:
+            load: dict[str, Any] = {"device": "cpu", "compute_type": "int8"}
+            if model_name in WHISPER_REVISIONS and _accepts(handle, "revision"):
+                load["revision"] = WHISPER_REVISIONS[model_name]
             try:
-                whisper = handle(model_name, device="cpu", compute_type="int8")
+                whisper = handle(model_name, **load)
             except Exception as exc:
                 for index in order:
                     finish(index, SpeechOutcome(f"failed: {exc}"))
@@ -422,9 +447,12 @@ __all__ = [
     "REFINE_MODEL",
     "SILENT",
     "UNAVAILABLE",
+    "WHISPER_MODELS",
+    "WHISPER_REVISIONS",
     "SpeechOutcome",
     "auto_enabled",
     "backend_available",
+    "check_model_name",
     "resolve_language",
     "speech_model",
     "speech_prompt",

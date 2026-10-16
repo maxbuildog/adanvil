@@ -24,10 +24,12 @@ from adanvil.media import Format
 from adanvil.project import resolve_in_project
 from adanvil.text import get_provider, load_font
 from adanvil.text.emoji import EmojiProvider, split_runs
+from adanvil.text.fonts import is_font_reference, unusable_family_message, usable_family
 from adanvil.text.layout import fit_size, measure_line, wrap
-from adanvil.text.styles import _cap_height, _draw_runs, _line_width, _text_band
+from adanvil.text.styles import _cap_height, _draw_runs, _line_width, _text_band, save_image
 
 ENDCARDS_DIR = "brand/endcards"
+DEFAULT_FAMILY = "poppins"
 DEFAULT_ACCENT = "#2563EB"
 DEFAULT_TEXT = "#18181B"
 DEFAULT_MUTED = "#6E6E76"
@@ -89,7 +91,7 @@ class EndCardSpec(_Model):
     text: str | None = None
     muted: str | None = None
     background: list[str] | None = Field(default=None, min_length=2, max_length=2)
-    family: str = "poppins"
+    family: str = DEFAULT_FAMILY
     emoji: str | None = None
     format: Format = Field(default_factory=Format)
 
@@ -130,6 +132,10 @@ class EndCardSpec(_Model):
     @field_validator("family")
     @classmethod
     def _known_family(cls, value: str) -> str:
+        if is_font_reference(value):
+            # A font file is checked against the project when the card is drawn; it is not
+            # opened here (a network path would be contacted).
+            return value
         try:
             load_font(value, 600, 20)
         except (ValueError, OSError) as exc:
@@ -175,10 +181,7 @@ class EndCardRender:
     layout: dict[str, Any]
 
     def save(self, path: str | Path) -> Path:
-        destination = Path(path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        self.image.convert("RGB").save(destination, format="PNG", optimize=True)
-        return destination
+        return save_image(self.image.convert("RGB"), path, format="PNG", optimize=True)
 
 
 def emoji_provider(root: Path, brand: Brand | None, emoji: str | None = None) -> EmojiProvider:
@@ -541,6 +544,12 @@ def render_end_card(root: Path, spec: EndCardSpec | dict[str, Any]) -> EndCardRe
 
     spec = parse_spec(spec)
     root = Path(root)
+    warnings: list[str] = []
+    family = usable_family(spec.family, root)
+    if family is None:
+        warnings.append(unusable_family_message(spec.family))
+        family = DEFAULT_FAMILY
+    spec = spec.model_copy(update={"family": family})
     brand = _load_brand(root)
     _check_banned(spec, brand)
     photo, source_size = _load_product(root, spec)
@@ -581,6 +590,8 @@ def render_end_card(root: Path, spec: EndCardSpec | dict[str, Any]) -> EndCardRe
     y = margin + (free - grow * gaps) / 2
     family = spec.family
     layout: dict[str, Any] = {"width": W, "height": H, "source_size": list(source_size)}
+    if warnings:
+        layout["warnings"] = warnings
 
     img = _gradient((W, H), top_bg, bottom_bg)
     for block in blocks:

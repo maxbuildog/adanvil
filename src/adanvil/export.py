@@ -34,14 +34,16 @@ them. Everything is a plain cut: the storyboard has no transitions.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 import os
 import posixpath
 import re
 import shutil
+import uuid
 from dataclasses import dataclass, field, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 from urllib.parse import quote
 from xml.etree import ElementTree as ET
@@ -57,6 +59,7 @@ from adanvil.media import (
     segment_duration,
 )
 from adanvil.project import resolve_in_project
+from adanvil.safeio import replace_bytes, replace_text
 from adanvil.storyboard import Storyboard, load_storyboard
 from adanvil.voice import load_track
 
@@ -834,7 +837,9 @@ def _write_overlay_png(
         picture = opened.convert("RGBA")
     canvas.paste(picture, offset, picture)
     box = canvas.getchannel("A").getbbox()
-    canvas.save(target, format="PNG")
+    encoded = io.BytesIO()
+    canvas.save(encoded, format="PNG")
+    replace_bytes(target, encoded.getvalue())  # never writes through a link planted at target
     picture.close()
     canvas.close()
     return list(box) if box else None
@@ -992,8 +997,10 @@ class _Paths:
                 folder = self.out_dir / "media"
                 folder.mkdir(parents=True, exist_ok=True)
                 target = folder / self.names.get(absolute, absolute.name)
-                if not target.exists():
-                    shutil.copy2(absolute, target)
+                if os.path.islink(target):
+                    target.unlink()  # a planted link: the copy is made next to it, not through it
+                if not os.path.lexists(target):
+                    _copy_new_file(absolute, target)
                 self.copied[absolute] = target
             return self.copied[absolute]
         return absolute
@@ -1767,21 +1774,76 @@ MANIFEST = "export_manifest.json"
 _LEGACY_FILES = (".otio", ".xml", ".edl", ".srt")
 
 
-def _remove_file(folder: Path, relative: str) -> None:
-    target = (folder / relative).absolute()
+def _real_inside(path: Path, folder: Path) -> bool:
+    """Whether the real path of ``path`` is ``folder`` or below it (links resolved)."""
+
+    inner = os.path.normcase(os.path.realpath(path))
+    outer = os.path.normcase(os.path.realpath(folder))
     try:
-        target.relative_to(folder.absolute())
-    except ValueError:
-        return  # never anything outside the export folder
-    if target.is_file() or target.is_symlink():
-        target.unlink()
+        return os.path.commonpath((inner, outer)) == outer
+    except ValueError:  # another drive
+        return False
+
+
+def _is_link(path: Path) -> bool:
+    junction = getattr(os.path, "isjunction", None)
+    return os.path.islink(path) or bool(junction and junction(path))
+
+
+def _plain_relative(relative: object) -> tuple[str, ...] | None:
+    """The parts of a name the manifest lists, or ``None`` when it is not a plain relative path:
+    absolute, a drive or UNC prefix, a ``..`` or hidden component, a control character."""
+
+    if not isinstance(relative, str) or not relative or any(ord(ch) < 32 for ch in relative):
+        return None
+    posix = PurePosixPath(relative.replace("\\", "/"))
+    windows = PureWindowsPath(relative)
+    if posix.is_absolute() or windows.is_absolute() or windows.drive or windows.root:
+        return None
+    parts = posix.parts
+    if not parts or any(part.startswith(".") or ":" in part for part in parts):
+        return None
+    return parts
+
+
+def _remove_file(folder: Path, relative: str) -> None:
+    """Delete one file an earlier export wrote, named by its manifest. The manifest is a file of
+    the project anyone can plant, so an entry that is not a plain relative path inside the export
+    folder deletes nothing; a link is removed itself, never the file it points to."""
+
+    parts = _plain_relative(relative)
+    if parts is None:
+        return
+    target = Path(os.path.abspath(folder)).joinpath(*parts)
+    if not _real_inside(target.parent, folder):
+        return  # a link in the middle of the path leads out of the export folder
+    if target.is_symlink() or target.is_file():
+        try:
+            target.unlink()
+        except OSError:
+            pass  # e.g. a link to a folder on Windows: left alone
 
 
 def _prune(folder: Path) -> None:
     for name in ("overlays", "media"):
         sub_folder = folder / name
+        if _is_link(sub_folder):
+            continue
         if sub_folder.is_dir() and not any(sub_folder.iterdir()):
             sub_folder.rmdir()
+
+
+def _copy_new_file(source: Path, target: Path) -> None:
+    """Copy ``source`` to ``target`` through a new file renamed into place: a link planted at
+    ``target`` is replaced, never followed. Media can be large, so it is copied, not read."""
+
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def _prepare_folder(folder: Path, root: Path, mode: str, overwrite: bool) -> None:
@@ -1801,14 +1863,17 @@ def _prepare_folder(folder: Path, root: Path, mode: str, overwrite: bool) -> Non
             data = json.loads(manifest.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             data = {}
+        if not isinstance(data, dict):
+            data = {}
         previous = data.get("mode")
         if previous != mode and not overwrite:
             raise ExportError(
                 f"{folder} already holds a {previous!r} export: choose another folder or pass "
                 "overwrite=true to replace it"
             )
-        for relative in data.get("files", []):
-            _remove_file(folder, str(relative))
+        listed = data.get("files")
+        for relative in listed if isinstance(listed, list) else []:
+            _remove_file(folder, relative)
         _prune(folder)
         return
     if not overwrite:
@@ -1823,10 +1888,11 @@ def _prepare_folder(folder: Path, root: Path, mode: str, overwrite: bool) -> Non
             entry.suffix in _LEGACY_FILES
             or entry.name in {"overlays.json", "README.txt", "relink.txt"}
         ):
-            entry.unlink()
+            entry.unlink()  # a link is removed itself, not the file it points to
     for name, only in (("overlays", ".png"), ("media", None)):
         sub_folder = folder / name
-        if sub_folder.is_dir():
+        # a sub-folder that is a link, or leads out of the export folder, is not cleared
+        if sub_folder.is_dir() and not _is_link(sub_folder) and _real_inside(sub_folder, folder):
             for entry in list(sub_folder.iterdir()):
                 if entry.is_file() and (only is None or entry.suffix == only):
                     entry.unlink()
@@ -1893,8 +1959,23 @@ def export_timeline(
     else:
         suffix = {"absolute": "", "relative": "-relative", "portable": "-portable"}[mode]
         folder = root / "exports" / f"{title}{suffix}"
+    if (
+        out_dir is None
+        and os.path.lexists(folder)
+        and (_is_link(folder) or not _real_inside(folder, root / "exports"))
+    ):
+        raise ExportError(
+            f"{folder} is a link or leads out of the project's exports/ folder: remove it or "
+            "choose another storyboard name"
+        )
     _prepare_folder(folder, root, mode, overwrite)
     folder.mkdir(parents=True, exist_ok=True)
+    for name in ("overlays", "media"):
+        sub_folder = folder / name
+        if os.path.lexists(sub_folder) and (
+            _is_link(sub_folder) or not _real_inside(sub_folder, folder)
+        ):
+            raise ExportError(f"{sub_folder} is a link: remove it, an export writes real files")
     foreign = _files_in(folder)
     cache = Cache(Path(cache_dir) if cache_dir is not None else root / "cache")
     wants_pictures = "otio" in chosen or "fcp7xml" in chosen
@@ -1904,22 +1985,23 @@ def export_timeline(
     written: dict[str, str] = {}
     if "otio" in chosen:
         target = folder / f"{title}.otio"
-        target.write_text(
+        replace_text(
+            target,
             json.dumps(otio_document(timeline, paths), indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
         written["otio"] = target.name
     if "fcp7xml" in chosen:
         target = folder / f"{title}.xml"
-        target.write_text(xml_document(timeline, paths), encoding="utf-8")
+        replace_text(target, xml_document(timeline, paths), encoding="utf-8")
         written["fcp7xml"] = target.name
     if "edl" in chosen:
         target = folder / f"{title}.edl"
-        target.write_text(edl_document(timeline, paths), encoding="utf-8")
+        replace_text(target, edl_document(timeline, paths), encoding="utf-8")
         written["edl"] = target.name
     if "srt" in chosen:
         target = folder / f"{title}.srt"
-        target.write_text(srt_document(timeline), encoding="utf-8")
+        replace_text(target, srt_document(timeline), encoding="utf-8")
         written["srt"] = target.name
     if wants_pictures:
         fps = timeline.fps
@@ -1951,17 +2033,20 @@ def export_timeline(
                 for overlay in timeline.overlays
             ],
         }
-        (folder / "overlays.json").write_text(
-            json.dumps(listing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        replace_text(
+            folder / "overlays.json",
+            json.dumps(listing, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
         )
         written["overlays"] = "overlays.json"
-    (folder / "README.txt").write_text(readme_document(timeline, mode, written), encoding="utf-8")
+    replace_text(folder / "README.txt", readme_document(timeline, mode, written), encoding="utf-8")
     written["readme"] = "README.txt"
     if paths.relative and not media_root:
-        (folder / "relink.txt").write_text(relink_document(paths), encoding="utf-8")
+        replace_text(folder / "relink.txt", relink_document(paths), encoding="utf-8")
         written["relink"] = "relink.txt"
     owned = sorted(_files_in(folder) - foreign - {MANIFEST})
-    (folder / MANIFEST).write_text(
+    replace_text(
+        folder / MANIFEST,
         json.dumps(
             {"adanvil_export": 2, "name": title, "mode": mode, "files": owned},
             indent=2,

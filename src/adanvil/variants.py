@@ -27,6 +27,7 @@ control: the base unchanged.
 from __future__ import annotations
 
 import copy
+import io
 import itertools
 import re
 from dataclasses import dataclass, field
@@ -36,6 +37,7 @@ from typing import Any
 from pydantic import TypeAdapter, ValidationError
 
 from adanvil.media import segment_duration
+from adanvil.safeio import replace_bytes
 from adanvil.storyboard.patch import apply_changes, rename_storyboard, storyboard_name
 from adanvil.storyboard.validate import _TOLERANCE as _EPS  # the shared 1e-3 s tolerance
 
@@ -639,8 +641,9 @@ def variants_sheet(
                     (left + index * (thumb + 2), top + label_height + line * (height + 2)),
                 )
     out = Path(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    sheet.save(out, format="JPEG", quality=85)
+    encoded = io.BytesIO()
+    sheet.save(encoded, format="JPEG", quality=85)
+    replace_bytes(out, encoded.getvalue())  # a link planted at ``out`` is replaced, not followed
     return out, notes
 
 

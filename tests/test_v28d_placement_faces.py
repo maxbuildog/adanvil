@@ -183,26 +183,26 @@ def _rows(path: Path) -> list[list[str]]:
 
 
 def test_manifest_has_a_cta_id_and_only_the_texts_that_differ(tmp_path: Path) -> None:
-    shared = ["Clique ici", "65,90 EUR"]
+    shared = ["Clique ici", "24,90 EUR"]
     path = write_manifest(
         tmp_path,
         "b",
         [
-            _entry("a", "ca", [*shared, "Satisfaite ou remboursee"]),
-            _entry("b", "cb", [*shared, "Garantie 60 jours"]),
+            _entry("a", "ca", [*shared, "Satisfait ou rembourse"]),
+            _entry("b", "cb", [*shared, "Garantie 30 jours"]),
         ],
     )
     rows = _rows(path)
     assert rows[0] == MANIFEST_COLUMNS and "CTA id" in rows[0]
     by_file = {row[0]: row for row in rows[1:]}
-    assert by_file["a.mp4"][6:8] == ["ca", "Satisfaite ou remboursee"]
-    assert by_file["b.mp4"][6:8] == ["cb", "Garantie 60 jours"]
+    assert by_file["a.mp4"][6:8] == ["ca", "Satisfait ou rembourse"]
+    assert by_file["b.mp4"][6:8] == ["cb", "Garantie 30 jours"]
 
 
 def test_manifest_falls_back_to_the_whole_cta_text(tmp_path: Path) -> None:
     # no CTA axis: the current text
-    path = write_manifest(tmp_path, "one", [_entry("x", None, ["Clique ici", "65,90 EUR"])])
-    assert _rows(path)[1][6:8] == ["", "Clique ici | 65,90 EUR"]
+    path = write_manifest(tmp_path, "one", [_entry("x", None, ["Clique ici", "24,90 EUR"])])
+    assert _rows(path)[1][6:8] == ["", "Clique ici | 24,90 EUR"]
     # two CTAs with the same texts in another order: nothing differs, the whole text is kept
     path = write_manifest(
         tmp_path,

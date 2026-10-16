@@ -18,6 +18,7 @@ from adanvil.project import init_project, read_project_text, resolve_in_project
 from adanvil.qc import qc_report
 from adanvil.reference import decode_reference
 from adanvil.render import compose
+from adanvil.safeio import replace_text
 from adanvil.server import _validate, render_caption_preview
 from adanvil.sfx import SfxError, fetch_pack
 from adanvil.storyboard import get_recipe, list_recipes
@@ -523,8 +524,8 @@ def _run(args: argparse.Namespace) -> int:
         quality = "preview" if args.preview else model.output.quality
         rendered = compose(model, root=root, quality=quality)
         path = Path(str(rendered.path)).with_suffix(".report.json")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        replace_text(
+            path,
             json.dumps(rendered.model_dump(mode="json"), ensure_ascii=False, indent=2) + chr(10),
             encoding="utf-8",
         )

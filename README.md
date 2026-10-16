@@ -44,7 +44,7 @@ git clone https://github.com/maxbuildog/adanvil && cd adanvil
 docker build -t adanvil .
 ```
 
-The image has ffmpeg 6.1, runs as a non-root user and speaks MCP over stdio. Mount the folder that holds your projects at `/projects`; the agent must give tool calls paths under `/projects` (for example `/projects/my-ad`).
+The image has ffmpeg 6.1, runs as a non-root user and speaks MCP over stdio. Mount the folder that holds your projects at `/projects`; the agent must give tool calls paths under `/projects` (for example `/projects/my-ad`): the image sets `ADANVIL_PROJECTS_DIR=/projects`, so any other folder, and `/projects` itself, is refused.
 
 ```bash
 # Claude Code
@@ -84,16 +84,18 @@ Requirements: Python 3.11 or newer, [uv](https://docs.astral.sh/uv/) (it provide
 
 ```bash
 # 1. Check the install (the first run downloads the package)
-uvx --from git+https://github.com/maxbuildog/adanvil adanvil --version
+uvx --from adanvil adanvil --version
 
 # 2. Register the server in Claude Code
-claude mcp add adanvil -- uvx --from git+https://github.com/maxbuildog/adanvil adanvil-mcp
+claude mcp add adanvil -e ADANVIL_PROJECTS_DIR="$HOME/AdAnvil" -- uvx --from adanvil adanvil-mcp
 
 # 3. Then ask your agent:
 #    "Make a 9:16 ad from the footage in ./my-project"
 ```
 
-The package is named `adanvil`. It installs two commands: `adanvil` (command line) and `adanvil-mcp` (the MCP server over stdio). `uvx adanvil-mcp` alone does not work, because `uvx` looks for a package with that name: always add `--from`. Once the package is on PyPI you can use `--from adanvil` instead of the Git URL.
+`ADANVIL_PROJECTS_DIR` (recommended) is the folder that holds your projects: the server then refuses any project outside it. Projects are subfolders of it (for example `~/AdAnvil/summer-ad`). See [`SECURITY.md`](SECURITY.md).
+
+The package is named `adanvil`. It installs two commands: `adanvil` (command line) and `adanvil-mcp` (the MCP server over stdio). `uvx adanvil-mcp` alone does not work, because `uvx` looks for a package with that name: always add `--from`.
 
 The agent creates the project folder and tells you where to drop your files: footage in `footage/`, the reference ad in `reference/`, music in `music/`, logo and end card in `brand/`. It learns the method from the `editing_guide` tool and from [`AGENTS.md`](AGENTS.md).
 
@@ -102,7 +104,8 @@ Codex, in `~/.codex/config.toml`:
 ```toml
 [mcp_servers.adanvil]
 command = "uvx"
-args = ["--from", "git+https://github.com/maxbuildog/adanvil", "adanvil-mcp"]
+args = ["--from", "adanvil", "adanvil-mcp"]
+env = { ADANVIL_PROJECTS_DIR = "/home/you/AdAnvil" }
 tool_timeout_sec = 900                   # indexing long footage can take minutes
 default_tools_approval_mode = "approve"  # needed with approval_policy = "never" (codex exec)
 ```
@@ -116,7 +119,8 @@ Cursor, in `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
   "mcpServers": {
     "adanvil": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/maxbuildog/adanvil", "adanvil-mcp"]
+      "args": ["--from", "adanvil", "adanvil-mcp"],
+      "env": { "ADANVIL_PROJECTS_DIR": "/home/you/AdAnvil" }
     }
   }
 }
@@ -130,8 +134,8 @@ Any other MCP client (generic stdio entry):
     "adanvil": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/maxbuildog/adanvil", "adanvil-mcp"],
-      "env": {}
+      "args": ["--from", "adanvil", "adanvil-mcp"],
+      "env": { "ADANVIL_PROJECTS_DIR": "/home/you/AdAnvil" }
     }
   }
 }
@@ -139,7 +143,7 @@ Any other MCP client (generic stdio entry):
 
 Restart the client after editing its config, then ask the agent to call `recipe_list`. Nine recipes means the server is connected.
 
-Optional: reference transcription needs the `transcribe` extra (`faster-whisper`). Use `--from "adanvil[transcribe] @ git+https://github.com/maxbuildog/adanvil"` in place of the plain `--from` value above.
+Optional: reference transcription needs the `transcribe` extra (`faster-whisper`). Use `--from "adanvil[transcribe]"` in place of the plain `--from` value above.
 
 ## Try it with the demo pack
 
@@ -175,7 +179,7 @@ The result depends on the model that drives AdAnvil. Reference analysis and shot
 | Tool | What it does |
 | --- | --- |
 | `project_init` | Create an AdAnvil project skeleton. |
-| `project_read_text` | Read a small project text file (licence notes, JSON, YAML). |
+| `project_read_text` | Read one of AdAnvil's own text files in the project (licence notes, JSON, YAML; at most 1 MB). |
 | `brand_onboard` | Read a brand's site, then write the brand profile from the answers. |
 | `brand_get` | Read the brand profile and brief. |
 | `library_index` | Index or refresh footage (long runs become detached jobs). |
@@ -268,7 +272,8 @@ Sounds go over the audio bed of an ad: a whoosh on a cut, a pop on a caption, a 
 - `ADANVIL_FFMPEG_THREADS`: threads of each ffmpeg decoder or encoder. Default `max(1, cpus // workers)`.
 - Voice: `ADANVIL_VOICE_CHECK_MODEL` sets the Whisper model of the pronunciation check (unless the voice spec sets `check_model`). `ADANVIL_VOICE_THREADS` sets the torch and Whisper threads (default: usable cores). `ADANVIL_VOICE_CHECK_CONFIDENCE` is the word confidence from 0 to 1 above which the alignment transcript replaces the check model (`off` to always run the check model; the spec's `check_confidence` wins). `ADANVIL_VOICE_PERSISTENT=0` goes back to one process per step instead of one worker per job.
 - Speech: `ADANVIL_SPEECH_MODEL` (default `base`), `ADANVIL_SPEECH=off` (no automatic transcription), `ADANVIL_SPEECH_PROMPT` (an optional text that biases the transcriber, for example towards keeping hesitations).
-- Other: `ADANVIL_CACHE` moves the cache folder; `ADANVIL_FFMPEG` and `ADANVIL_FFPROBE` point to the binaries.
+- Other: `ADANVIL_CACHE` moves the cache folder; `ADANVIL_FFMPEG` and `ADANVIL_FFPROBE` point to the binaries (absolute paths; otherwise they are looked up on `PATH`, never in the current folder).
+- Security: `ADANVIL_PROJECTS_DIR` keeps every project under one folder; `ADANVIL_ALLOW_PRIVATE_URLS=1` lets `brand_onboard` and the downloads reach `localhost` and the local network (development only). See [`SECURITY.md`](SECURITY.md).
 - Benchmark: `uv run python scripts/bench.py --files 12 --seconds 4`.
 
 ## Responsible use

@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from adanvil.audio import beat_grid
 from adanvil.brand import Brand, find_banned
-from adanvil.ffmpeg import probe
+from adanvil.ffmpeg import MAX_SECONDS, probe
 from adanvil.media import (
     ClipSegment,
     ImageSegment,
@@ -34,7 +34,7 @@ from adanvil.speech.captions import (
 from adanvil.speech.library import SpeechLibrary, normalise_path
 from adanvil.text import render
 from adanvil.text.emoji import DirectoryProvider, NoEmojiProvider, missing_emoji
-from adanvil.text.fonts import FAMILIES
+from adanvil.text.fonts import unusable_family_message, usable_family
 from adanvil.vocab import normalize_shot_type
 from adanvil.voice import VoiceTrack, load_track
 
@@ -152,15 +152,29 @@ def _relative_file(root: Path, written: str) -> Path | None:
 
 
 def _family_for_render(family: str, root: Path) -> str | None:
-    if family.lower() in FAMILIES:
-        return family
-    try:
-        path = resolve_in_project(root, family)
-    except (OSError, TypeError, ValueError):
-        return None
-    if path.is_file():
-        return str(path)
-    return None
+    """The family a text may be drawn with: a bundled name, or the absolute path of a font file
+    of the project; ``None`` for anything else (the default family is used instead)."""
+
+    return usable_family(family, root)
+
+
+def _checked_font(overlay: Any, root: Path, index: int, warnings: list[Issue]) -> Any:
+    """``overlay`` with a ``family`` it may be drawn with: a font that is neither bundled nor a
+    file of the project is replaced by the default family, with a warning."""
+
+    family = getattr(overlay, "family", None)
+    if family is None:
+        return overlay
+    usable = _family_for_render(family, root)
+    if usable is None:
+        warnings.append(
+            Issue(
+                code="font_not_found",
+                message=f"font_not_found: {unusable_family_message(family)}",
+                where=f"overlays[{index}].family",
+            )
+        )
+    return overlay if usable == family else overlay.model_copy(update={"family": usable})
 
 
 def _pad_for_text(spec: Any, width: int, height: int) -> int:
@@ -190,9 +204,7 @@ def _render_text_overlay(
     )
     spec = applied.to_text_spec()
     if spec.family is not None:
-        family = _family_for_render(spec.family, root)
-        if family is not None:
-            spec = spec.model_copy(update={"family": family})
+        spec = spec.model_copy(update={"family": _family_for_render(spec.family, root)})
 
     pad = _pad_for_text(spec, width, height)
     center = spec.x_center if spec.x_center is not None else width // 2
@@ -916,7 +928,7 @@ def _check_emphasis(
                     message=(
                         f"emphasis_unmatched: emphasis {entry!r} matches no word of caption "
                         f"{key} ({' / '.join(caption.lines)!r}): nothing is highlighted. Write "
-                        "the entry as it is shown (a price as '65,90 €' or '65,90', a "
+                        "the entry as it is shown (a price as '24,90 €' or '24,90', a "
                         "phrase as consecutive words), or mark it with *...* in the text"
                     ),
                     where=f"overlays[{key}].emphasis",
@@ -1284,6 +1296,17 @@ def validate_storyboard(
             )
 
     total = model.total_duration()
+    if not total <= MAX_SECONDS:
+        errors.append(
+            Issue(
+                code="too_long",
+                message=(
+                    f"too_long: the storyboard lasts {total:g}s; AdAnvil renders at most "
+                    f"{MAX_SECONDS:g}s. Remove segments or shorten them."
+                ),
+                where="segments",
+            )
+        )
     report_summary.update(
         {
             "total_duration": total,
@@ -1672,6 +1695,7 @@ def validate_storyboard(
         key = str(index)
         if isinstance(overlay, SfxOverlay):
             continue  # a sound, not a picture: checked with the audio below
+        overlay = _checked_font(overlay, project_root, index, warnings)
         if isinstance(overlay, SpeechCaptionsOverlay):
             if not model.audio.clips:
                 errors.append(
@@ -1887,11 +1911,12 @@ def validate_storyboard(
     if brand is not None:
         if brand.visual is not None and brand.visual.caption_family is not None:
             if _family_for_render(brand.visual.caption_family, project_root) is None:
-                errors.append(
+                warnings.append(
                     Issue(
                         code="font_not_found",
                         message=(
-                            f"Brand caption family '{brand.visual.caption_family}' was not found."
+                            "font_not_found: brand.visual.caption_family: "
+                            + unusable_family_message(brand.visual.caption_family)
                         ),
                         where="brand.visual.caption_family",
                     )

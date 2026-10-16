@@ -61,10 +61,19 @@ def jobs_pointer_dir() -> Path:
     return Path(base) / "adanvil" / "jobs"
 
 
+_JOB_ID = re.compile(r"job-[0-9a-f]{1,64}")
+
+
+def is_job_id(job_id: object) -> bool:
+    """Whether ``job_id`` has the shape of the ids ``start_job`` makes (``job-`` and hex)."""
+
+    return isinstance(job_id, str) and _JOB_ID.fullmatch(job_id) is not None
+
+
 def resolve_job_file(job_id: str, project_dir: str | Path | None = None) -> Path | None:
     """Find a job document by id: in the project when given, else through the pointer."""
 
-    if not re.fullmatch(r"job-[0-9a-f]{1,64}", job_id):
+    if not is_job_id(job_id):
         return None
     if project_dir is not None:
         candidate = Path(project_dir) / "renders" / "jobs" / f"{job_id}.json"
@@ -649,8 +658,10 @@ def start_job(
             kwargs["creationflags"] = detached_flags()
         else:
             kwargs["start_new_session"] = True
+        # -P: the folder the MCP client started the server in is not put on sys.path, so a
+        # .py planted there cannot shadow a module of the runner.
         process = subprocess.Popen(
-            [sys.executable, "-m", "adanvil.jobs", "run", str(job_file)],
+            [sys.executable, "-P", "-m", "adanvil.jobs", "run", str(job_file)],
             **kwargs,
         )
     finally:
@@ -677,6 +688,7 @@ if __name__ == "__main__":
 __all__ = [
     "JobKind",
     "ProgressEvent",
+    "is_job_id",
     "mark_dead_runner",
     "jobs_pointer_dir",
     "read_job",

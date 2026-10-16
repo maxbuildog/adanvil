@@ -44,60 +44,60 @@ NONE = get_provider("none")
 
 
 def test_emphasis_key_normalises_prices_and_rates() -> None:
-    assert emphasis_key("65,90 €") == emphasis_key("65.90€") == emphasis_key("65,90€.") == "65.90€"
+    assert emphasis_key("24,90 €") == emphasis_key("24.90€") == emphasis_key("24,90€.") == "24.90€"
     assert emphasis_key("-20%") == emphasis_key("- 20 %,") == "-20%"
     assert emphasis_key("–20%") == "-20%"  # an en dash used as a minus
-    assert emphasis_key("Éclat!") == "eclat"
+    assert emphasis_key("Café!") == "cafe"
     assert emphasis_key("$49") == "$49"
     assert emphasis_key("à-la-carte") == "a-la-carte"  # inner hyphens stay
 
 
 def test_match_emphasis_finds_numbers_prices_and_phrases() -> None:
-    words = ["Only", "65,90 €", "today,", "-20%", "livraison", "offerte.", "l'éclat"]
-    assert match_emphasis(words, ["65,90"]) == ({1}, [])
-    assert match_emphasis(words, ["65,90 €"]) == ({1}, [])
-    assert match_emphasis(words, ["65.90€"]) == ({1}, [])
+    words = ["Only", "24,90 €", "today,", "-20%", "livraison", "offerte.", "l'été"]
+    assert match_emphasis(words, ["24,90"]) == ({1}, [])
+    assert match_emphasis(words, ["24,90 €"]) == ({1}, [])
+    assert match_emphasis(words, ["24.90€"]) == ({1}, [])
     assert match_emphasis(words, ["€"]) == (set(), ["€"])  # a lone sign matches no word
     assert match_emphasis(words, ["-20%"]) == ({3}, [])
     assert match_emphasis(words, ["20%"]) == (set(), ["20%"])  # the sign matters
     assert match_emphasis(words, ["Livraison offerte"]) == ({4, 5}, [])
     assert match_emphasis(words, ["offerte livraison"]) == (set(), ["offerte livraison"])
-    assert match_emphasis(words, ["éclat"]) == ({6}, [])  # a part of an elided word
+    assert match_emphasis(words, ["été"]) == ({6}, [])  # a part of an elided word
     assert match_emphasis(words, ["65", "gratuit"]) == (set(), ["65", "gratuit"])
     assert match_emphasis(words, ["", "   "]) == (set(), [])  # nothing to look for: ignored
 
 
 def test_strip_markers_works_around_prices_and_numbers() -> None:
-    assert strip_markers("now *65,90 €* only") == ("now 65,90 € only", {1, 2})
+    assert strip_markers("now *24,90 €* only") == ("now 24,90 € only", {1, 2})
     assert strip_markers("*-20%* today") == ("-20% today", {0})
     assert strip_markers("only *49€*, really") == ("only 49€, really", {1})
     assert strip_markers("only *€ 49* now") == ("only € 49 now", {1, 2})
-    assert strip_markers("*65,90 €*") == ("65,90 €", {0, 1})
+    assert strip_markers("*24,90 €*") == ("24,90 €", {0, 1})
     assert strip_markers("*Livraison offerte*.") == ("Livraison offerte.", {0, 1})
     assert strip_markers("49€* only *terms") == ("49€* only *terms", set())
 
 
 def test_marked_entries_keep_a_price_in_one_entry() -> None:
-    text, marked = strip_markers("only *65,90 €* and *fast*")
-    assert marked_entries(text.split(), marked) == ["65,90 €", "fast"]
-    caption = CaptionOverlay(style="outline", lines=["Now *65,90 €* only", "*-20%* today"])
-    assert caption.lines == ["Now 65,90 € only", "-20% today"]
-    assert caption.emphasis == ["65,90 €", "-20%"]
+    text, marked = strip_markers("only *24,90 €* and *fast*")
+    assert marked_entries(text.split(), marked) == ["24,90 €", "fast"]
+    caption = CaptionOverlay(style="outline", lines=["Now *24,90 €* only", "*-20%* today"])
+    assert caption.lines == ["Now 24,90 € only", "-20% today"]
+    assert caption.emphasis == ["24,90 €", "-20%"]
     assert not any("*" in line for line in caption.lines)
     assert caption.unmatched_emphasis() == []
 
 
 def test_a_price_is_drawn_in_the_highlight_colour() -> None:
-    lines = ["Now only 65,90 € today"]
+    lines = ["Now only 24,90 € today"]
     base = {"style": "outline", "lines": lines, "y": 500, "highlight": GREEN}
     assert _green_columns(TextSpec(**base)) is None
     same = {
         _green_columns(TextSpec(**base, emphasis=[entry]))
-        for entry in ("65,90", "65,90 €", "65.90€", "65,90€")
+        for entry in ("24,90", "24,90 €", "24.90€", "24,90€")
     }
     assert len(same) == 1 and None not in same
     marked = CaptionOverlay(
-        style="outline", lines=["Now only *65,90 €* today"], y=500, highlight=GREEN
+        style="outline", lines=["Now only *24,90 €* today"], y=500, highlight=GREEN
     )
     assert _green_columns(marked.to_text_spec()) == same.pop()  # the stars are never drawn
     percent = _green_columns(
@@ -117,19 +117,19 @@ def test_emphasis_unmatched_warning_in_validate(tmp_path: Path) -> None:
             {
                 "type": "caption",
                 "style": "pill",
-                "lines": ["Only 65,90 € today"],
+                "lines": ["Only 24,90 € today"],
                 "start": 0,
                 "end": 2,
-                "emphasis": ["65,90", "99,90", "today"],
+                "emphasis": ["24,90", "99,90", "today"],
             },
-            {"type": "caption", "style": "pill", "lines": ["Only *65,90 €* today"], "start": 2},
+            {"type": "caption", "style": "pill", "lines": ["Only *24,90 €* today"], "start": 2},
         ],
     }
     report = validate_storyboard(raw, root=root)
     warned = [w for w in report.warnings if w.code == "emphasis_unmatched"]
     assert len(warned) == 1
     assert "'99,90'" in warned[0].message and warned[0].where == "overlays[0].emphasis"
-    raw["overlays"][0]["emphasis"] = ["65,90 €", "today"]
+    raw["overlays"][0]["emphasis"] = ["24,90 €", "today"]
     again = validate_storyboard(raw, root=root)
     assert not [w for w in again.warnings if w.code == "emphasis_unmatched"]
 
@@ -139,19 +139,19 @@ def test_emphasis_unmatched_in_caption_preview(tmp_path: Path) -> None:
     overlay = {
         "type": "caption",
         "style": "outline",
-        "lines": ["Only 65,90 € today"],
-        "emphasis": ["65,90", "nothing"],
+        "lines": ["Only 24,90 € today"],
+        "emphasis": ["24,90", "nothing"],
     }
     payload, _ = render_caption_preview(root, "footage/grey.mp4", 0.5, overlay)
     assert payload["emphasis_unmatched"] == ["nothing"]
     assert "emphasis_unmatched" in payload["warnings"][0]
-    overlay["emphasis"] = ["65,90"]
+    overlay["emphasis"] = ["24,90"]
     clean, _ = render_caption_preview(root, "footage/grey.mp4", 0.5, overlay)
     assert "emphasis_unmatched" not in clean
 
 
 def test_spoken_words_group_a_price_with_its_sign() -> None:
-    assert spoken_words(["Only 65,90 € today"]) == ["Only", "65,90 €", "today"]
+    assert spoken_words(["Only 24,90 € today"]) == ["Only", "24,90 €", "today"]
 
 
 # ------------------------------------------------------ 2. snapped storyboards keep their own name

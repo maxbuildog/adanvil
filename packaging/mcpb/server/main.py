@@ -52,6 +52,10 @@ def main() -> int:
         return 1
     folder = os.environ.get("ADANVIL_PROJECTS_DIR", "").strip()
     if folder:
+        # The server confines every project to this folder: make it absolute before the chdir,
+        # or a relative value would be read again from inside itself.
+        folder = str(Path(folder).expanduser().resolve())
+        os.environ["ADANVIL_PROJECTS_DIR"] = folder
         Path(folder).mkdir(parents=True, exist_ok=True)
         os.chdir(folder)
     from adanvil.server import main as serve

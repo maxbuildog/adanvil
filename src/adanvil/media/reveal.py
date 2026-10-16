@@ -25,7 +25,8 @@ from PIL import Image, ImageColor, ImageDraw, ImageFilter
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from adanvil import config
-from adanvil.ffmpeg import filter_script_option, probe, run
+from adanvil.ffmpeg import MAX_SECONDS, filter_script_option, probe, run
+from adanvil.safeio import replace_text
 from adanvil.text import TextSpec, get_provider
 from adanvil.text import render as render_text
 from adanvil.vision.framing import DEFAULT_FACE_Y, Framing, align_zooms
@@ -102,12 +103,12 @@ class RevealSegment(FaceFocusModel):
     model_config = ConfigDict(populate_by_name=True)
 
     type: Literal["reveal"] = "reveal"
-    duration: float = Field(gt=0)
+    duration: float = Field(gt=0, le=MAX_SECONDS)
     before: SplitPanel
     after: SplitPanel
     direction: DIRECTIONS = "left_to_right"
-    hold_before: float = Field(default=0.8, ge=0)
-    sweep: float = Field(default=0.9, gt=0)
+    hold_before: float = Field(default=0.8, ge=0, le=MAX_SECONDS)
+    sweep: float = Field(default=0.9, gt=0, le=MAX_SECONDS)
     back_and_forth: bool = False
     focus: tuple[float, float] | None = None
     align_faces: bool = True
@@ -399,6 +400,7 @@ def render_divider(
 def _save_png(builder: Any, final: Path) -> None:
     final.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(f"{final}.tmp{final.suffix}")
+    temporary.unlink(missing_ok=True)
     try:
         picture = builder()
         picture.save(temporary, format="PNG")
@@ -621,7 +623,8 @@ def _build_reveal(
     for path in (*labels, *([divider] if divider is not None else [])):
         args.extend(["-loop", "1", "-framerate", str(fmt.fps), "-i", str(path)])
     graph = Path(f"{output}.filters.txt")
-    graph.write_text(
+    replace_text(
+        graph,
         reveal_graph(seg, fmt, labels=bool(labels), divider=divider is not None),
         encoding="utf-8",
     )

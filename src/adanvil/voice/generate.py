@@ -7,7 +7,6 @@ import difflib
 import inspect
 import os
 import re
-import shutil
 import unicodedata
 import wave
 from collections.abc import Callable
@@ -15,15 +14,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from adanvil.brand import load_brand
 from adanvil.ffmpeg import probe, run
 from adanvil.media.cache import Cache
 from adanvil.project import BRAND_FILE, resolve_in_project
+from adanvil.safeio import replace_bytes, replace_text
 from adanvil.text.animate import strip_markers
 
-from .engines import Alignment, FilesEngine, LineJob, VoiceEngine, get_engine
+from .engines import KOKORO_VOICE, Alignment, FilesEngine, LineJob, VoiceEngine, get_engine
 
 
 class VoiceLineText(BaseModel):
@@ -100,6 +100,8 @@ class VoiceSpec(BaseModel):
     engine: Literal["chatterbox", "kokoro", "files", "fake"] = "chatterbox"
     reference: str | None = None
     # kokoro only: the fixed voice (default ``ff_siwis`` for French, ``af_heart`` for English).
+    # Kokoro would load a value ending in ``.pt`` as a local file and a comma as a blend: only
+    # the plain voice names are accepted.
     voice: str | None = None
     # Optional: without it the language of ``brand.yaml`` is used, else ``en``.
     language: str | None = None
@@ -117,6 +119,16 @@ class VoiceSpec(BaseModel):
     tail: float = Field(default=0.22, ge=0.0)
     gap: float = Field(default=0.0, ge=0.0)
     files: dict[int, str] | None = None
+
+    @field_validator("voice")
+    @classmethod
+    def validate_voice_name(cls, value: str | None) -> str | None:
+        if value is not None and not KOKORO_VOICE.fullmatch(value):
+            raise ValueError(
+                "voice must be the name of a Kokoro voice such as af_heart or ff_siwis "
+                "(two lowercase letters, an underscore, then letters or digits)"
+            )
+        return value
 
     @model_validator(mode="after")
     def validate_engine_inputs(self) -> VoiceSpec:
@@ -695,7 +707,7 @@ def generate_voice(
                 f"({detail})."
             )
         final = directory / f"line_{index + 1:02d}.wav"
-        shutil.copyfile(state.path, final)
+        replace_bytes(final, state.path.read_bytes())  # a rename: a planted link is replaced
         final_paths.append(final)
 
     starts: list[float] = []
@@ -744,9 +756,7 @@ def generate_voice(
         manifest=_relative(root, manifest_path),
         warnings=list(dict.fromkeys(warnings)),
     )
-    temporary = Path(f"{manifest_path}.tmp")
-    temporary.write_text(track.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, manifest_path)
+    replace_text(manifest_path, track.model_dump_json(indent=2) + "\n")
     for path in directory.glob("line_*.wav"):
         if path not in final_paths:
             path.unlink(missing_ok=True)

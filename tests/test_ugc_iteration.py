@@ -65,7 +65,7 @@ def _json(result):
 HEARD = {
     "HOOK1": [
         (0.3, 0.6, "Mes"),
-        (0.65, 0.9, "rites"),
+        (0.65, 0.9, "tasks"),
         (0.95, 1.2, "changent."),
         (1.8, 2.3, "Brio."),
     ],
@@ -74,7 +74,7 @@ HEARD = {
 BETTER = {
     "HOOK1": [
         (0.3, 0.6, "Mes"),
-        (0.65, 0.9, "rides"),
+        (0.65, 0.9, "tasses"),
         (0.95, 1.2, "changent."),
         (1.8, 2.3, "Brio."),
     ],
@@ -167,30 +167,30 @@ def test_refine_replaces_the_words_with_a_stronger_model(tmp_path: Path) -> None
     engine = ScriptedEngine(HEARD, by_model={"medium": BETTER})
     index_library(root, "footage", engine=engine)
     before = _entry(root, "HOOK1.mov")
-    assert before.speech.text == "Mes rites changent. Brio."
+    assert before.speech.text == "Mes tasks changent. Brio."
     sidecar = before.speech.words_file
     assert store.read_sidecar(root, sidecar).model == "base"
-    assert search(root, text="rides") == []
+    assert search(root, text="tasses") == []
 
     result = refine_speech(root, [before.id], engine=engine)
     assert result.model == "medium" and result.refined == [before.id]
     assert engine.calls[-1] == (["HOOK1"], None, "medium")  # the stronger model, one clip
     after = _entry(root, "HOOK1.mov")
-    assert after.speech.text == "Mes rides changent. Brio."
+    assert after.speech.text == "Mes tasses changent. Brio."
     assert after.speech.words_file == sidecar  # replaced in place
     data = store.read_sidecar(root, sidecar)
-    assert data.model == "medium" and [w.text for w in data.words][1] == "rides"
-    assert [entry.path for entry in search(root, text="RIDES")] == ["footage/HOOK1.mov"]
+    assert data.model == "medium" and [w.text for w in data.words][1] == "tasses"
+    assert [entry.path for entry in search(root, text="TASSES")] == ["footage/HOOK1.mov"]
     # The other clips are untouched, and indexing again does not undo the refinement.
     assert _entry(root, "HOOK2.mov").speech.text == "Bonjour tout."
     index_library(root, "footage", engine=engine)
-    assert _entry(root, "HOOK1.mov").speech.text == "Mes rides changent. Brio."
+    assert _entry(root, "HOOK1.mov").speech.text == "Mes tasses changent. Brio."
     assert store.read_sidecar(root, sidecar).model == "medium"
 
 
 def test_refine_gives_the_vocabulary_and_never_loses_old_words(tmp_path: Path) -> None:
     root = _footage(tmp_path)
-    save_brand(Brand(name="Ember & Oak", speech=Speech(vocabulary=["rides"])), root / "brand.yaml")
+    save_brand(Brand(name="Ember & Oak", speech=Speech(vocabulary=["tasses"])), root / "brand.yaml")
     engine = ScriptedEngine(HEARD, by_model={"medium": BETTER})
     index_library(root, "footage", engine=engine)
     hook = _entry(root, "HOOK1.mov")
@@ -206,9 +206,9 @@ def test_refine_gives_the_vocabulary_and_never_loses_old_words(tmp_path: Path) -
     assert not result.refined and result.errors == [
         {"path": "footage/HOOK1.mov", "message": "speech failed: model crashed"}
     ]
-    assert failing.options[0]["prompt"] == "Glossary: Ember & Oak, rides."
+    assert failing.options[0]["prompt"] == "Glossary: Ember & Oak, tasses."
     kept = _entry(root, "HOOK1.mov")
-    assert kept.speech.status == "done" and kept.speech.text == "Mes rites changent. Brio."
+    assert kept.speech.status == "done" and kept.speech.text == "Mes tasks changent. Brio."
 
 
 def test_refine_targets_take_paths_folders_and_ids_and_say_why_not(tmp_path: Path) -> None:
@@ -238,7 +238,7 @@ def test_refine_without_a_transcriber_is_an_error_not_a_lost_transcript(
     monkeypatch.setitem(sys.modules, "faster_whisper", None)
     with pytest.raises(RuntimeError, match="unavailable"):
         refine_speech(root, [hook.id])
-    assert _entry(root, "HOOK1.mov").speech.text == "Mes rites changent. Brio."
+    assert _entry(root, "HOOK1.mov").speech.text == "Mes tasks changent. Brio."
 
 
 def test_refine_runs_as_a_detached_job_with_progress(
@@ -280,7 +280,7 @@ def test_refine_runs_as_a_detached_job_with_progress(
     assert sorted(final["refine"]["refined"]) == sorted(ids)
     assert ("transcribing", {"done": 2, "total": 2, "unit": "clips"}) in stages
     assert engine.calls[-1][2] == "medium"
-    assert _entry(root, "HOOK1.mov").speech.text == "Mes rides changent. Brio."
+    assert _entry(root, "HOOK1.mov").speech.text == "Mes tasses changent. Brio."
     # A refine job never waits for the project lock (like an index job).
     assert jobs._has_earlier_pending_job(Path(record["job_file"]), final) is False
 
@@ -333,42 +333,42 @@ def test_speech_refine_tool_validates_and_queues_a_job(
 
 
 def test_a_correction_must_stay_close_to_the_heard_word() -> None:
-    assert closeness("rites", "rides") >= 0.5
-    assert correction_problem("rites", "rides") is None
+    assert closeness("tasks", "tasses") >= 0.5
+    assert correction_problem("tasks", "tasses") is None
     assert correction_problem("100", "10") is None
     assert correction_problem("Glowly", "glowly") is None
     # A different word is not a spelling fix: it would put words in the speaker's mouth.
-    problem = correction_problem("temps", "teint")
-    assert problem is not None and "speech_refine" in problem and "0.40" in problem
+    problem = correction_problem("temps", "sucre")
+    assert problem is not None and "speech_refine" in problem and "0.20" in problem
     assert "speech_refine" in correction_problem("we", "guaranteed result")
     assert "one word" in correction_problem("glow ly", "Glowly")
     assert correction_problem("", "x") and correction_problem("x", "  ")
 
     with pytest.raises(ValidationError, match="speech_corrections.*speech_refine"):
-        SpeechCaptionsOverlay.model_validate({"corrections": {"temps": "teint"}})
-    ok = SpeechCaptionsOverlay.model_validate({"corrections": {"rites": "rides", "100": "10"}})
-    assert ok.corrections == {"rites": "rides", "100": "10"}
+        SpeechCaptionsOverlay.model_validate({"corrections": {"temps": "sucre"}})
+    ok = SpeechCaptionsOverlay.model_validate({"corrections": {"tasks": "tasses", "100": "10"}})
+    assert ok.corrections == {"tasks": "tasses", "100": "10"}
     with pytest.raises(ValidationError, match="same heard word"):
-        SpeechCaptionsOverlay.model_validate({"corrections": {"Rites": "rides", "rites": "rids"}})
+        SpeechCaptionsOverlay.model_validate({"corrections": {"Tasks": "tasses", "tasks": "tass"}})
 
 
 def test_corrections_apply_word_by_word_ignoring_case_and_keeping_punctuation() -> None:
-    words = [SpeechWord(0.0, 0.2, text) for text in ["Rites,", "des", "RITES", "(rites)", "brites"]]
-    fixed, used = apply_corrections(words, {"rites": "rides", "des": "dès", "never": "nevers"})
-    assert [word.text for word in fixed] == ["Rides,", "dès", "RIDES", "(rides)", "brites"]
-    assert used == {"rites": 3, "des": 1, "never": 0}
+    words = [SpeechWord(0.0, 0.2, text) for text in ["Tasks,", "des", "TASKS", "(tasks)", "btasks"]]
+    fixed, used = apply_corrections(words, {"tasks": "tasses", "des": "dès", "never": "nevers"})
+    assert [word.text for word in fixed] == ["Tasses,", "dès", "TASSES", "(tasses)", "btasks"]
+    assert used == {"tasks": 3, "des": 1, "never": 0}
     # A replacement that has capitals is shown as written.
-    fixed, _ = apply_corrections(words[:1], {"rites": "RiDes"})
-    assert fixed[0].text == "RiDes,"
+    fixed, _ = apply_corrections(words[:1], {"tasks": "TaSses"})
+    assert fixed[0].text == "TaSses,"
     assert apply_corrections(words, {})[1] == {}
 
 
 MISHEARD = [
     (0.5, 0.8, "Mes"),
-    (0.85, 1.2, "Rites"),
+    (0.85, 1.2, "Tasks"),
     (1.25, 1.9, "changent."),
     (3.0, 3.3, "Voici"),
-    (3.35, 3.7, "rites"),
+    (3.35, 3.7, "tasks"),
     (3.75, 4.3, "pour"),
     (4.35, 4.7, "vous."),
 ]
@@ -384,23 +384,23 @@ def test_corrections_fix_the_captions_and_are_listed_for_review(
     overlay = {
         "type": "speech_captions",
         "mode": "sentence",
-        "corrections": {"rites": "rides", "ghost": "ghosts"},
+        "corrections": {"tasks": "tasses", "ghost": "ghosts"},
     }
     shown = [" ".join(c.lines) for c in _expand(root, board, overlay)]
-    assert shown[0] == "Mes Rides changent."  # the capital of "Rites" is kept
-    assert any("Voici rides" in text for text in shown)
+    assert shown[0] == "Mes Tasses changent."  # the capital of "Tasks" is kept
+    assert any("Voici tasses" in text for text in shown)
     plain = [" ".join(c.lines) for c in _expand(root, board, {**overlay, "corrections": {}})]
-    assert plain[0] == "Mes Rites changent."
+    assert plain[0] == "Mes Tasks changent."
 
     ad = _valid_ad(
         {"overlays": [{"type": "speech_captions", "mode": "chunks", "max_words": 3,
-                       "corrections": {"rites": "rides", "ghost": "ghosts"}}]}
+                       "corrections": {"tasks": "tasses", "ghost": "ghosts"}}]}
     )  # fmt: skip
     report = validate_storyboard(ad, root=root)
     assert report.ok, report.errors
     listed = [w for w in report.warnings if w.code == "speech_corrections"]
     assert len(listed) == 1 and listed[0].where == "overlays[0].corrections"
-    assert "'rites' -> 'rides' (2x)" in listed[0].message
+    assert "'tasks' -> 'tasses' (2x)" in listed[0].message
     assert "'ghost' -> 'ghosts' (0x)" in listed[0].message
     assert "speech_refine" in listed[0].message
     # No corrections, no warning.

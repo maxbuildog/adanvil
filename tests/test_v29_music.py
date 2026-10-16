@@ -84,14 +84,23 @@ FREESOUND = {
 }  # fmt: skip
 
 
+class _Asked(list):
+    """The URLs asked, in order; ``headers`` holds the headers sent with each JSON request."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.headers: list[dict | None] = []
+
+
 @pytest.fixture
-def network(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+def network(monkeypatch: pytest.MonkeyPatch) -> _Asked:
     """Mock the HTTP layer; the list receives every URL asked."""
 
-    asked: list[str] = []
+    asked = _Asked()
 
     def fake_json(url: str, headers: dict | None = None) -> dict:
         asked.append(url)
+        asked.headers.append(headers)
         if "api.openverse.org" in url:
             tail = url.split("/v1/audio/")[1].split("?")[0].strip("/")
             if tail:
@@ -149,8 +158,7 @@ def test_search_keeps_only_licences_that_allow_commercial_use_and_modification(n
 
 
 def test_the_user_agent_is_clear() -> None:
-    request = music._request("https://api.openverse.org/v1/audio/")
-    assert request.get_header("User-agent").startswith("AdAnvil-music/")
+    assert music._headers()["User-Agent"].startswith("AdAnvil-music/")
 
 
 def test_duration_filter_mood_and_limit(network) -> None:
@@ -182,7 +190,9 @@ def test_freesound_with_a_key_filters_its_licences(
     by = next(t for t in result["tracks"] if t["id"] == "222")
     assert by["licence"] == "CC BY 4.0" and by["attribution_required"]
     assert "Attribution beat" in by["attribution_text"] and "bo" in by["attribution_text"]
-    assert "token=secret" in network[0] and "NonCommercial" not in network[0]
+    # The key travels in a header: it is never in a URL (logged, shown in errors).
+    assert "secret" not in network[0] and "NonCommercial" not in network[0]
+    assert network.headers[0] == {"Authorization": "Token secret"}
 
 
 def test_search_rejects_bad_arguments(network) -> None:

@@ -27,7 +27,7 @@ def strip_markers(text: str) -> tuple[str, set[int]]:
     """``text`` without its ``*word*`` markers, and the indexes of the marked words.
 
     Indexes count the whitespace separated tokens of the clean text. A marker may span several
-    words (``*very fast*``, ``*65,90 €*``), may wrap text with no letter (``*-20%*``, ``*€*``)
+    words (``*very fast*``, ``*24,90 €*``), may wrap text with no letter (``*-20%*``, ``*€*``)
     and may be followed by punctuation (``*now*,``). A text without any marker comes back
     unchanged; a star that has no partner (``49€*``) is plain text.
     """
@@ -66,7 +66,7 @@ def strip_markers(text: str) -> tuple[str, set[int]]:
 
 def marked_entries(tokens: list[str], marked: set[int]) -> list[str]:
     """The emphasis entries of the marked ``tokens``: a mark with no letter (``€``, ``%``) next
-    to a marked word joins its entry, so ``*65,90 €*`` is the one entry ``65,90 €``."""
+    to a marked word joins its entry, so ``*24,90 €*`` is the one entry ``24,90 €``."""
 
     entries: list[str] = []
     last = -2

@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from adanvil.safeio import replace_text
+
 
 def cache_dir() -> Path:
     return Path(os.environ.get("ADANVIL_CACHE", Path.home() / ".cache" / "adanvil"))
@@ -24,9 +26,16 @@ def _interpreter(env_dir: Path) -> Path:
 
 _TORCH = ["torch==2.6.0", "torchaudio==2.6.0"]  # the versions chatterbox-tts pins
 _CPU_INDEX = "https://download.pytorch.org/whl/cpu"
+# The versions that load models are pinned (they were run together on 15/10/2026); the audio
+# libraries only get a lower bound, because their wheels differ by platform.
+CHATTERBOX_PACKAGE = "chatterbox-tts==0.1.7"
+WHISPER_PACKAGE = "faster-whisper==1.2.1"
+KOKORO_PACKAGE = "kokoro==0.9.4"
 _SPACY_ENGLISH = (
     "https://github.com/explosion/spacy-models/releases/download/"
     "en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+    # SHA-256 of the release wheel (12 806 118 bytes), checked by pip and uv at install.
+    "#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85"
 )
 
 
@@ -56,13 +65,13 @@ def _commands(
         # Kokoro (Apache-2.0) speaks with fixed voices; faster-whisper still aligns and checks
         # (librosa decodes the audio for it, as in the chatterbox stack).
         # Two steps: asked together, the resolver once picked a tokenizers that has no wheel.
-        installs.append([*pip, "faster-whisper"])
-        installs.append([*pip, "kokoro>=0.9.4", "soundfile", "librosa"])
+        installs.append([*pip, WHISPER_PACKAGE])
+        installs.append([*pip, KOKORO_PACKAGE, "soundfile", "librosa"])
         # English phonemes need this spaCy model; kokoro would otherwise try to download it at
         # run time with a pip that a uv environment does not have.
         installs.append([*pip, _SPACY_ENGLISH])
     else:
-        installs.append([*pip, "chatterbox-tts", "faster-whisper"])
+        installs.append([*pip, CHATTERBOX_PACKAGE, WHISPER_PACKAGE])
     return create, installs, interpreter
 
 
@@ -98,7 +107,7 @@ def voice_setup(
         subprocess.run(install, check=True)
     config = voice_config_path()
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text(json.dumps({"python": str(interpreter)}, indent=2) + "\n", encoding="utf-8")
+    replace_text(config, json.dumps({"python": str(interpreter)}, indent=2) + "\n")
     print(f"Saved voice interpreter path to {config}")
     return interpreter
 

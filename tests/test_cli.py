@@ -150,7 +150,7 @@ def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(["--version"])
     assert exc_info.value.code == 0
-    assert "adanvil 0.3.0" in capsys.readouterr().out
+    assert "adanvil 0.3.1" in capsys.readouterr().out
 
 
 def test_cli_render_preview_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

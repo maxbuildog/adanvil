@@ -35,7 +35,7 @@ LABELS: tuple[Label, ...] = (
     Label("hands", "a close-up photo of hands", ("mains", "manos", "hande")),
     Label(
         "product close-up",
-        "a close-up photo of a cosmetic product package held or placed in front of the camera",
+        "a close-up photo of a product package held or placed in front of the camera",
         ("produit", "gros plan produit", "producto"),
     ),
     Label("bathroom", "a photo taken in a bathroom", ("salle de bain", "bano")),

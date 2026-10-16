@@ -8,7 +8,7 @@ import re
 import statistics
 import unicodedata
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -16,6 +16,7 @@ from adanvil import ffmpeg
 from adanvil.audio import profile_audio, rms_per_second
 from adanvil.media.sheet import contact_sheet, reference_shot_sheets
 from adanvil.project import resolve_in_project
+from adanvil.safeio import replace_text
 from adanvil.textremoval import detect_text_boxes
 from adanvil.voice.engines import VoiceUnavailableError, WorkerEngine
 
@@ -301,7 +302,12 @@ def _transcribe(
             return None, str(exc)
 
     try:
-        whisper = WhisperModel(model, device="cpu", compute_type="int8")
+        from adanvil.speech.transcribe import WHISPER_REVISIONS, _accepts, check_model_name
+
+        load: dict[str, Any] = {"device": "cpu", "compute_type": "int8"}
+        if model in WHISPER_REVISIONS and _accepts(WhisperModel, "revision"):
+            load["revision"] = WHISPER_REVISIONS[model]
+        whisper = WhisperModel(check_model_name(model), **load)
         segments, _ = whisper.transcribe(
             str(source),
             word_timestamps=True,
@@ -347,6 +353,11 @@ def decode_reference(
     info = ffmpeg.probe(source_path)
     if info.kind != "video" or info.duration is None or info.duration <= 0:
         raise ValueError(f"reference must be a video with a positive duration: {source_path}")
+    if info.duration > ffmpeg.MAX_SECONDS:
+        raise ValueError(
+            f"reference lasts {info.duration:g}s: at most {ffmpeg.MAX_SECONDS:g}s can be "
+            "decoded. Cut the reference ad first"
+        )
     if info.width is None or info.height is None:
         raise ValueError(f"reference has no display dimensions: {source_path}")
 
@@ -507,7 +518,8 @@ def decode_reference(
         breakdown_template=breakdown_template,
         notes=notes,
     )
-    (output_dir / "reference.json").write_text(
+    replace_text(
+        output_dir / "reference.json",
         json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )

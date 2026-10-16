@@ -10,6 +10,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from adanvil.safeio import replace_text
+
 
 class _BrandModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -240,13 +242,8 @@ def brand_accent_color(root: str | Path) -> str | None:
 def save_brand(brand: Brand, path: str | Path) -> None:
     """Save a brand profile as ordered, human-readable UTF-8 YAML."""
 
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
     values = brand.model_dump(mode="python")
-    destination.write_text(
-        yaml.safe_dump(values, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
-    )
+    replace_text(path, yaml.safe_dump(values, allow_unicode=True, sort_keys=False))
 
 
 def default_brand(name: str) -> Brand:

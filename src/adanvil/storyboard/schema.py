@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from PIL import ImageColor
@@ -18,6 +18,7 @@ from pydantic import (
     model_validator,
 )
 
+from adanvil.ffmpeg import MAX_FPS, MAX_SECONDS, MAX_SIDE
 from adanvil.media import (
     ClipSegment,
     Format,
@@ -41,6 +42,14 @@ if TYPE_CHECKING:
 
 _CAPTION_STYLES = Literal["pill", "meme", "outline", "outline_soft", "box", "label"]
 _NAME_PATTERN = r"^[A-Za-z0-9_.-]{1,80}$"
+
+# Upper bounds on what a storyboard may ask of the renderer: a size or a duration an agent (or a
+# prompt injected into one) can write must not be able to exhaust the disk or the memory.
+# ``MAX_SIDE``, ``MAX_FPS`` and ``MAX_SECONDS`` come from ``adanvil.ffmpeg`` (one place defines
+# them). The schema accepts a timeline up to an hour; validation (``too_long``) and the render
+# refuse an ad longer than ``MAX_SECONDS``.
+MAX_TIMELINE = 3600.0  # the whole ad, and the place of an overlay on it
+MAX_SOURCE_SECONDS = 86400.0  # a position inside a source file
 
 Segment = Annotated[
     ClipSegment | ImageSegment | SplitSegment | RevealSegment, Field(discriminator="type")
@@ -895,16 +904,16 @@ class AudioSpec(_StrictModel):
     # The feel wanted of the music (``music_search(fit_to="storyboard")`` reads it).
     music_feel: Literal["calm", "medium", "energetic"] | None = None
     from_reference: str | None = None
-    start: float = Field(default=0.0, ge=0)
+    start: float = Field(default=0.0, ge=0, le=MAX_SOURCE_SECONDS)
     volume: float = Field(default=0.8, ge=0)
-    fade_in: float = Field(default=0.2, ge=0)
-    fade_out: float = Field(default=1.0, ge=0)
+    fade_in: float = Field(default=0.2, ge=0, le=MAX_SECONDS)
+    fade_out: float = Field(default=1.0, ge=0, le=MAX_SECONDS)
     # Integrated loudness target of the final bed (LUFS), applied in a separate pass;
     # None keeps the source level. Feeds normalise around -14 LUFS. It does not
     # apply to the voice mix when ``voice`` is set.
     loudness: float | None = Field(default=-14.0, ge=-40, le=-6)
     voice: str | None = None
-    voice_offset: float = Field(default=0.0, ge=0)
+    voice_offset: float = Field(default=0.0, ge=0, le=MAX_TIMELINE)
     music_volume: float = Field(default=0.35, ge=0.2, le=0.6)
     voice_loudness: float = -15.0
     # True: the bed is the original sound of the clip segments (see ``audio_from``), brought
@@ -932,9 +941,53 @@ def normalise_quality(value: Any) -> Any:
     return "preview" if isinstance(value, str) and value.strip().casefold() == "draft" else value
 
 
+def output_path_problem(value: object, name: str = "storyboard") -> str | None:
+    """Why ``value`` cannot be an ``output.path``, or ``None`` when it can.
+
+    The render replaces the file at this path, so it must be a file the renderer really
+    writes, in the folder it writes into: relative (``/`` or ``\\``), under ``renders/``, no
+    ``..`` and no hidden name, ending in ``.mp4`` (the renderer always encodes an MP4).
+    ``{name}`` is the one placeholder: it stands for the storyboard name.
+    """
+
+    if not isinstance(value, str) or not value.strip() or "\x00" in value:
+        return "must be a non-empty relative path"
+    if "{" in value.replace("{name}", "") or "}" in value.replace("{name}", ""):
+        return "may only use the {name} placeholder"
+    text = value.replace("{name}", name)
+    posix = PurePosixPath(text.replace("\\", "/"))
+    windows = PureWindowsPath(text)
+    if posix.is_absolute() or windows.is_absolute() or windows.drive or windows.root:
+        return "must be relative to the project"
+    parts = posix.parts
+    if any(part == ".." for part in parts):
+        return "must not contain '..'"
+    if any(part.startswith(".") for part in parts):
+        return "must not contain a hidden name (starting with '.')"
+    if any(ch in '<>:"|?*' or ord(ch) < 32 for ch in text):
+        return "must not contain any of < > : \" | ? * or a control character"
+    if len(parts) < 2 or parts[0] != "renders":
+        return "must be under renders/"
+    last = PurePosixPath(parts[-1])
+    if last.suffix.casefold() != ".mp4" or not last.stem:
+        return "must end with .mp4"
+    return None
+
+
 class OutputSpec(_StrictModel):
     path: str = "renders/{name}.mp4"
     quality: Literal["preview", "final"] = "final"
+
+    @field_validator("path")
+    @classmethod
+    def _path_is_a_render_file(cls, value: str) -> str:
+        problem = output_path_problem(value)
+        if problem:
+            raise ValueError(
+                f"output.path {problem} (for example renders/{{name}}.mp4): the render "
+                "replaces this file, so it must be an .mp4 under renders/"
+            )
+        return value
 
     @field_validator("quality", mode="before")
     @classmethod
@@ -1221,6 +1274,24 @@ class Storyboard(_StrictModel):
         return self
 
     @model_validator(mode="after")
+    def validate_output_path(self) -> Storyboard:
+        # With the real name: a name that starts with a dot would make a hidden file.
+        problem = output_path_problem(self.output.path, self.name)
+        if problem:
+            raise ValueError(
+                f"output.path {problem} (for example renders/{{name}}.mp4): the render "
+                "replaces this file, so it must be an .mp4 under renders/"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_limits(self) -> Storyboard:
+        problems = _limit_problems(self)
+        if problems:
+            raise ValueError("; ".join(problems))
+        return self
+
+    @model_validator(mode="after")
     def centre_stickers(self) -> Storyboard:
         """A sticker with ``x: "center"`` gets the x that centres it on this storyboard's frame."""
 
@@ -1249,6 +1320,70 @@ class Storyboard(_StrictModel):
             timeline.append((start, end))
             start = end
         return timeline
+
+
+def _too_long(where: str, seconds: float, limit: float) -> str | None:
+    if not math.isfinite(seconds) or seconds > limit:
+        return f"{where} must be a finite number of at most {limit:g} seconds (got {seconds:g})"
+    return None
+
+
+def _limit_problems(sb: Storyboard) -> list[str]:
+    """Every size and duration of ``sb`` above its upper bound (see ``MAX_SIDE``)."""
+
+    found: list[str] = []
+
+    def add(problem: str | None) -> None:
+        if problem:
+            found.append(problem)
+
+    for name, limit in (("width", MAX_SIDE), ("height", MAX_SIDE), ("fps", MAX_FPS)):
+        value = getattr(sb.format, name)
+        if not 1 <= value <= limit:
+            found.append(f"format.{name} must be between 1 and {limit} (got {value})")
+    total = 0.0
+    for index, segment in enumerate(sb.segments):
+        where = f"segments[{index}]"
+        length = segment_duration(segment)
+        total += length if math.isfinite(length) else 0.0
+        add(_too_long(f"{where} duration", length, MAX_SECONDS))
+        if isinstance(segment, ClipSegment):
+            add(_too_long(f"{where}.in", segment.in_, MAX_SOURCE_SECONDS))
+            add(_too_long(f"{where}.out", segment.out, MAX_SOURCE_SECONDS))
+            if segment.freeze is not None:
+                add(_too_long(f"{where}.freeze.hold", segment.freeze.hold, MAX_SECONDS))
+            for number, punch in enumerate(segment.punch):
+                add(_too_long(f"{where}.punch[{number}].hold", punch.hold, MAX_SECONDS))
+        elif isinstance(segment, SplitSegment):
+            for number, panel in enumerate(segment.panels):
+                add(_too_long(f"{where}.panels[{number}].in", panel.in_, MAX_SOURCE_SECONDS))
+                if panel.freeze is not None:
+                    add(
+                        _too_long(
+                            f"{where}.panels[{number}].freeze.hold", panel.freeze.hold, MAX_SECONDS
+                        )
+                    )
+        elif isinstance(segment, RevealSegment):
+            add(_too_long(f"{where}.hold_before", segment.hold_before, MAX_SECONDS))
+            add(_too_long(f"{where}.sweep", segment.sweep, MAX_SECONDS))
+            for side_name, side in (("before", segment.before), ("after", segment.after)):
+                add(_too_long(f"{where}.{side_name}.in", side.in_, MAX_SOURCE_SECONDS))
+                if side.freeze is not None:
+                    add(
+                        _too_long(
+                            f"{where}.{side_name}.freeze.hold", side.freeze.hold, MAX_SECONDS
+                        )
+                    )
+    add(_too_long("the total duration of the ad", total, MAX_TIMELINE))
+    for index, overlay in enumerate(sb.overlays):
+        for attribute in ("start", "end", "at"):
+            value = getattr(overlay, attribute, None)
+            if isinstance(value, int | float) and not isinstance(value, bool):
+                add(_too_long(f"overlays[{index}].{attribute}", float(value), MAX_TIMELINE))
+        offset = getattr(overlay, "in_", None)
+        if isinstance(offset, int | float) and not isinstance(offset, bool):
+            add(_too_long(f"overlays[{index}].in", float(offset), MAX_SOURCE_SECONDS))
+    return found
 
 
 def _validate_relative_path(value: str, field_name: str) -> None:

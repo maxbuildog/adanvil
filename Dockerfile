@@ -27,7 +27,8 @@ RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin adanvil \
     && mkdir /projects && chown adanvil /projects
 ENV PATH="/opt/adanvil/bin:$PATH" \
     HOME=/tmp \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    ADANVIL_PROJECTS_DIR=/projects
 USER adanvil
 WORKDIR /projects
 VOLUME /projects

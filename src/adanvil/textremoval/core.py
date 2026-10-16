@@ -391,11 +391,18 @@ def build_mask(
 
 
 def ffmpeg_filter_path(path: str | Path) -> str:
-    """Escape a filesystem path for an ffmpeg filter option value."""
+    """Escape a filesystem path for an ffmpeg filter option value.
+
+    ffmpeg unescapes twice. The option value is escaped first (backslash, colon, quote and
+    space get a backslash), then the whole value goes between single quotes for the filter
+    graph, where nothing can be escaped: a quote is written as '\\'' (close the quote, an
+    escaped quote, reopen the quote).
+    """
     escaped = str(path).replace("\\", "\\\\")
     escaped = escaped.replace(":", "\\:")
     escaped = escaped.replace("'", "\\'")
     escaped = escaped.replace(" ", "\\ ")
+    escaped = escaped.replace("'", "'\\''")
     return f"'{escaped}'"
 
 

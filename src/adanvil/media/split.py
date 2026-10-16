@@ -18,7 +18,7 @@ from PIL import Image, ImageColor
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from adanvil import config
-from adanvil.ffmpeg import probe, run
+from adanvil.ffmpeg import MAX_SECONDS, probe, run
 from adanvil.text import TextSpec, get_provider
 from adanvil.text import render as render_text
 from adanvil.vocab import (
@@ -55,7 +55,7 @@ class PanelFreeze(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    hold: float = Field(default=1.0, gt=0)
+    hold: float = Field(default=1.0, gt=0, le=MAX_SECONDS)
     zoom: float = Field(default=1.35, ge=1.0)
     center: tuple[int, int] | None = None
 
@@ -96,7 +96,7 @@ class SplitSegment(BaseModel):
 
     type: Literal["split"] = "split"
     layout: Literal["side_by_side", "top_bottom"] = "side_by_side"
-    duration: float = Field(gt=0)
+    duration: float = Field(gt=0, le=MAX_SECONDS)
     panels: list[SplitPanel] = Field(min_length=2, max_length=2)
     gap: int = Field(default=8, ge=0, le=200)
     gap_color: str = "#000000"
@@ -332,6 +332,7 @@ def _label_picture(seg: SplitSegment, fmt: Format, cache: Cache) -> Path | None:
             return final
         final.parent.mkdir(parents=True, exist_ok=True)
         temporary = Path(f"{final}.tmp{final.suffix}")
+        temporary.unlink(missing_ok=True)
         try:
             picture, _ = render_labels(seg, fmt.width, fmt.height)
             picture.save(temporary, format="PNG")

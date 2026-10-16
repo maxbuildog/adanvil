@@ -11,11 +11,11 @@ Users can also drop their own files in ``sfx/``.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 import os
 import tempfile
-import urllib.request
 import wave
 import zipfile
 import zlib
@@ -24,9 +24,10 @@ from typing import Any
 
 import numpy as np
 
-from adanvil import __version__
+from adanvil import __version__, netguard
 from adanvil.ffmpeg import probe, run
 from adanvil.project import resolve_in_project
+from adanvil.safeio import replace_bytes, replace_text
 
 SFX_DIR = "sfx"
 SAMPLE_RATE = 48_000
@@ -35,6 +36,7 @@ PEAK_CEILING_DB = -1.5  # the highest sample of a finished sound
 SFX_SUFFIXES = (".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac", ".opus")
 MANIFEST_PATH = Path(__file__).with_name("assets") / "sfx_pack.json"
 USER_AGENT = f"AdAnvil-sfx/{__version__} (https://github.com/maxbuildog/adanvil)"
+MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024  # the pinned archives are a few MB; the SHA-1 decides
 
 
 def load_manifest() -> list[dict[str, Any]]:
@@ -128,19 +130,14 @@ def finish(
 def write_wav(path: Path, samples: np.ndarray) -> None:
     """Mono 16-bit PCM at 48 kHz, written atomically."""
 
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     pcm = np.round(np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2")
-    temporary = path.with_name(f".{path.name}.part")
-    try:
-        with wave.open(str(temporary), "wb") as handle:
-            handle.setnchannels(1)
-            handle.setsampwidth(2)
-            handle.setframerate(SAMPLE_RATE)
-            handle.writeframes(pcm.tobytes())
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(SAMPLE_RATE)
+        handle.writeframes(pcm.tobytes())
+    replace_bytes(path, buffer.getvalue())
 
 
 # ---------------------------------------------------------------------------------------------
@@ -361,7 +358,9 @@ def _sha1(path: Path) -> str:
 
 
 def download_file(url: str, sha1: str, destination: Path, *, timeout: float = 60.0) -> Path:
-    """Stream ``url`` to ``destination`` and keep it only when its SHA-1 is ``sha1``."""
+    """Stream ``url`` to ``destination`` and keep it only when its SHA-1 is ``sha1``.
+
+    The download goes through ``adanvil.netguard`` (public http(s) hosts, at most 200 MB)."""
 
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -369,17 +368,14 @@ def download_file(url: str, sha1: str, destination: Path, *, timeout: float = 60
         return destination
     partial = destination.with_name(destination.name + ".part")
     partial.unlink(missing_ok=True)
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with (
-            urllib.request.urlopen(request, timeout=timeout) as response,
-            partial.open("wb") as out,
-        ):
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                out.write(chunk)
+        netguard.fetch_to_file(
+            url,
+            partial,
+            timeout=timeout,
+            max_bytes=MAX_DOWNLOAD_BYTES,
+            headers={"User-Agent": USER_AGENT},
+        )
     except Exception as exc:
         partial.unlink(missing_ok=True)
         raise SfxError(f"could not download {url}: {exc}") from exc
@@ -397,7 +393,7 @@ def _decode_member(archive: Path, member: str) -> np.ndarray:
     with tempfile.TemporaryDirectory(prefix="adanvil-sfx-") as scratch:
         extracted = Path(scratch) / Path(member).name
         with zipfile.ZipFile(archive) as bundle:
-            extracted.write_bytes(bundle.read(member))
+            replace_bytes(extracted, bundle.read(member))
         decoded = run(
             ["-i", str(extracted), "-map", "0:a:0", "-ac", "1", "-ar", str(SAMPLE_RATE),
              "-f", "f32le", "-"],
@@ -515,14 +511,12 @@ def fetch_pack(
         built.append(name)
 
     ordered = [records[entry["name"]] for entry in manifest if entry["name"] in records]
-    pack_file.write_text(
-        json.dumps({"sounds": ordered}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    (folder / "LICENCES.txt").write_text(
+    replace_text(pack_file, json.dumps({"sounds": ordered}, ensure_ascii=False, indent=2) + "\n")
+    replace_text(
+        folder / "LICENCES.txt",
         "Sound pack of AdAnvil. Only CC0 sources, or sounds synthesised in code.\n\n"
         + "\n".join(_licence_text(record) for record in ordered)
         + "\n",
-        encoding="utf-8",
     )
     return {
         "folder": SFX_DIR,

@@ -10,11 +10,10 @@ from decimal import Decimal, InvalidOperation
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import unquote_plus, urljoin, urlparse, urlunparse
-from urllib.request import Request, urlopen
 
 from pydantic import BaseModel, Field
 
-from adanvil import __version__
+from adanvil import __version__, netguard
 
 
 class ColorFact(BaseModel):
@@ -104,15 +103,19 @@ _SYSTEM_FONTS = {
 }
 _FONT_DECLARATION = re.compile(r"font-family\s*:\s*([^;}{]+)", re.IGNORECASE)
 _CUSTOM_PROPERTY = re.compile(r"(?:^|[;{])\s*(--[\w-]+)\s*:\s*([^;}{]+)", re.IGNORECASE)
+# The fallback is bounded: "var(--a, var(--a, ..." with no closing parenthesis would otherwise
+# be scanned to the end of the text from every "var(".
 _CSS_VARIABLE = re.compile(
-    r"var\(\s*(--[\w-]+)(?:\s*,\s*([^)]*))?\s*\)",
+    r"var\(\s*(--[\w-]+)(?:\s*,\s*([^)]{0,300}))?\s*\)",
     re.IGNORECASE,
 )
 _HEX = re.compile(r"(?<![\w-])#([0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3})(?![0-9a-z])", re.I)
+# At most four thousands groups (a price in the quadrillions): an unbounded group would be tried
+# again from every group of a long "1 111 111 ..." run, which is quadratic.
 _PRICE = re.compile(
     r"(?<![\w])(?:(?:AUD|CAD|CHF|EUR|GBP|JPY|NOK|PLN|SEK|USD|€|\$|£)\s*"
-    r"\d+(?:[ .]\d{3})*(?:[,.]\d{1,2})?"
-    r"|\d+(?:[ .]\d{3})*(?:[,.]\d{1,2})?\s*"
+    r"\d+(?:[ .]\d{3}){0,4}(?:[,.]\d{1,2})?"
+    r"|\d+(?:[ .]\d{3}){0,4}(?:[,.]\d{1,2})?\s*"
     r"(?:AUD|CAD|CHF|EUR|GBP|JPY|NOK|PLN|SEK|USD|€|\$|£))(?![\w])",
     re.IGNORECASE,
 )
@@ -148,6 +151,10 @@ _VOID_TAGS = {
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|[\r\n]+")
 _GUARANTEE_TERMS = ("money back", "guarantee", "garantie", "rembours", "satisfait")
 _FOLLOW_PATH_TERMS = ("product", "shop", "collections")
+# What is read from a site is bounded before any regular expression sees it: a page of at most
+# 3 MB, and 200 000 characters of visible text, of CSS or of one script.
+_MAX_PAGE_BYTES = 3 * 1024 * 1024
+_MAX_CHARS = 200_000
 
 
 def _collapse(value: str) -> str:
@@ -218,6 +225,9 @@ _ICON_FONT = re.compile(r"(icon|icons|star|stars|symbol|emoji|awesome|glyph|font
 
 def _clean_font(value: str) -> str | None:
     # Leftovers of split var() fallbacks carry stray quotes and parentheses.
+    # Whitespace is collapsed first: "\s*!important" tried from every space of a long run of
+    # spaces is quadratic.
+    value = re.sub(r"\s+", " ", value)
     value = value.strip().strip("'\"()").strip().strip("'\"").strip()
     value = re.sub(r"\s*!important\s*$", "", value, flags=re.IGNORECASE)
     value = re.sub(r"\s+", " ", value)
@@ -597,12 +607,13 @@ class _TextParser(HTMLParser):
 
 
 def _strip_html(value: str) -> str:
+    value = value[:_MAX_CHARS]
     parser = _TextParser()
     try:
         parser.feed(value)
         parser.close()
     except Exception:
-        return _collapse(re.sub(r"<[^>]+>", " ", value))[:600]
+        return _collapse(re.sub(r"<[^>]{1,2000}>", " ", value))[:600]
     return _collapse(" ".join(parser.parts))[:600]
 
 
@@ -612,21 +623,21 @@ def _extract_charset(content_type: str) -> str | None:
 
 
 def _default_fetch(url: str, timeout: float) -> tuple[int, str, str, str]:
-    request = Request(
+    """GET ``url`` through the guarded client: public http(s) hosts only, at most 3 MB."""
+
+    response = netguard.fetch(
         url,
+        timeout=timeout,
+        max_bytes=_MAX_PAGE_BYTES,
         headers={"User-Agent": f"AdAnvil/{__version__} (+https://github.com/maxbuildog/adanvil)"},
     )
-    with urlopen(request, timeout=timeout) as response:
-        content_type = response.headers.get("Content-Type", "")
-        raw = response.read()
-        charset = (
-            response.headers.get_content_charset() or _extract_charset(content_type) or "utf-8"
-        )
-        try:
-            text = raw.decode(charset, errors="replace")
-        except LookupError:
-            text = raw.decode("utf-8", errors="replace")
-        return response.status, content_type, text, response.geturl()
+    content_type = response.headers.get("Content-Type", "")
+    charset = response.headers.get_content_charset() or _extract_charset(content_type) or "utf-8"
+    try:
+        text = response.body.decode(charset, errors="replace")
+    except LookupError:
+        text = response.body.decode("utf-8", errors="replace")
+    return response.status, content_type, text, response.url
 
 
 def _fetch_one(
@@ -646,12 +657,15 @@ def _warning(target: str, error: Exception | str) -> str:
 
 
 def _shopify_currency(scripts: list[str]) -> str | None:
+    # "active" comes first in the object Shopify writes: the lazy gap is bounded, or every
+    # "Shopify.currency = {" of a hostile script would be scanned to the end of it.
     active_pattern = re.compile(
-        r"Shopify\s*\.\s*currency\s*=\s*\{.*?(?:['\"]active['\"]|\bactive\b)\s*:\s*['\"]([A-Za-z]{3})['\"]",
+        r"Shopify\s*\.\s*currency\s*=\s*\{.{0,300}?(?:['\"]active['\"]|\bactive\b)"
+        r"\s*:\s*['\"]([A-Za-z]{3})['\"]",
         re.IGNORECASE | re.DOTALL,
     )
     for script in scripts:
-        match = active_pattern.search(script)
+        match = active_pattern.search(script[:_MAX_CHARS])
         if match:
             currency = _normalise_currency(match.group(1))
             if currency is not None:
@@ -665,7 +679,7 @@ def _site_currency(parser: _PageParser) -> str | None:
     shopify_currency = _shopify_currency(parser.inline_scripts)
     if shopify_currency is not None:
         return shopify_currency
-    counts = _currency_counts(" ".join(parser.currency_parts))
+    counts = _currency_counts(" ".join(parser.currency_parts)[:_MAX_CHARS])
     return counts.most_common(1)[0][0] if counts else None
 
 
@@ -787,7 +801,7 @@ def analyze_site(
     except Exception as exc:
         facts.warnings.append(f"Could not parse {final_url}: {exc}")
 
-    visible_text_raw = " ".join(parser.visible_parts)
+    visible_text_raw = " ".join(parser.visible_parts)[:_MAX_CHARS]
     visible_text = _collapse(visible_text_raw)
     facts.title = _collapse(" ".join(parser.title_parts))
     facts.description = parser.description
@@ -804,7 +818,7 @@ def analyze_site(
     stylesheet_urls = [href for href in parser.stylesheet_hrefs if _same_origin(href, final_url)][
         :2
     ]
-    style_chunks = list(parser.css_chunks) + list(parser.theme_colors)
+    style_chunks = [chunk[:_MAX_CHARS] for chunk in (*parser.css_chunks, *parser.theme_colors)]
     fonts = _google_fonts(parser.google_font_hrefs)
     for stylesheet_url in stylesheet_urls:
         try:
@@ -815,7 +829,7 @@ def analyze_site(
             )
             if style_status < 200 or style_status >= 400:
                 facts.warnings.append(f"HTTP {style_status} while fetching {stylesheet_url}")
-            style_chunks.append(stylesheet)
+            style_chunks.append(stylesheet[:_MAX_CHARS])
         except Exception as exc:
             facts.warnings.append(_warning(stylesheet_url, exc))
     for family in _fonts_from_css(style_chunks):
@@ -872,7 +886,7 @@ def analyze_site(
                 page_parser = _PageParser(page_final)
                 page_parser.feed(page_html)
                 page_parser.close()
-                page_text = _collapse(" ".join(page_parser.visible_parts))
+                page_text = _collapse(" ".join(page_parser.visible_parts)[:_MAX_CHARS])
                 for heading in page_parser.headings:
                     if len(facts.headings) >= 20:
                         break

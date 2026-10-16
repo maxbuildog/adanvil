@@ -12,6 +12,7 @@ from typing import Any
 from adanvil import ffmpeg
 from adanvil.media.cache import Cache
 from adanvil.media.sheet import media_mosaic
+from adanvil.safeio import replace_text
 
 from .index import IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, VIDEO_EXTENSIONS
 
@@ -78,8 +79,7 @@ def _durations(root: Path, videos: list[Path]) -> dict[Path, float]:
         alive = set(keys.values())
         pruned = {key: value for key, value in stored.items() if key in alive}
         try:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_text(json.dumps(pruned), encoding="utf-8")
+            replace_text(cache_path, json.dumps(pruned), encoding="utf-8")
         except OSError:
             pass
     return {video: float(stored.get(key, 0.0)) for video, key in keys.items()}

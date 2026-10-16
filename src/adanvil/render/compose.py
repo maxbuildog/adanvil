@@ -26,7 +26,7 @@ from adanvil.audio import (
     voice_music_mix,
 )
 from adanvil.brand import brand_accent, brand_accent_color
-from adanvil.ffmpeg import filter_script_option, probe, run
+from adanvil.ffmpeg import MAX_SECONDS, filter_script_option, probe, run
 from adanvil.media import (
     Cache,
     ClipSegment,
@@ -39,6 +39,7 @@ from adanvil.media import (
 )
 from adanvil.music import music_licence
 from adanvil.project import resolve_in_project
+from adanvil.safeio import replace_text
 from adanvil.sfx import resolve_sfx
 from adanvil.speech.analyze import brand_filler_lists
 from adanvil.speech.captions import expand_speech_captions
@@ -59,6 +60,7 @@ from adanvil.storyboard.schema import normalise_quality
 from adanvil.storyboard.sfx import all_sfx
 from adanvil.text import get_provider
 from adanvil.text import render as render_text
+from adanvil.text.fonts import unusable_family_message, usable_family
 from adanvil.voice import VoiceTrack, load_track
 
 from .animated import Placement, animated_placements
@@ -129,26 +131,45 @@ def _number(value: float) -> str:
 
 
 def _ffconcat_quote(path: Path) -> str:
-    # ffconcat accepts forward slashes on Windows.  A single quote is escaped
-    # with a backslash inside the quoted file name.
-    value = path.resolve().as_posix().replace("'", r"\'")
-    return f"file '{value}'"
+    # ffconcat accepts forward slashes on Windows. Inside single quotes everything is literal,
+    # so a quote is written as '\'' (close the quote, an escaped quote, reopen the quote).
+    value = path.resolve().as_posix()
+    if "\n" in value or "\r" in value:
+        raise ValueError(
+            "a project folder name cannot contain a line break (the ffconcat list reads one "
+            f"directive per line): {value!r}"
+        )
+    escaped = value.replace("'", "'\\''")
+    return f"file '{escaped}'"
 
 
 def _concat_mezzanines(paths: list[Path], cache: Cache) -> Path:
     key = {"paths": [str(path.resolve()) for path in paths]}
     list_path = cache.path_for("concat", key, suffix=".ffconcat")
-    list_path.parent.mkdir(parents=True, exist_ok=True)
-    if not list_path.is_file():
-        list_path.write_text(
-            "ffconcat version 1.0\n" + "\n".join(_ffconcat_quote(path) for path in paths) + "\n",
-            encoding="utf-8",
-        )
+    # Written anew for each build, never reused as found: a list planted in ``cache/concat/``
+    # would otherwise be read with ``-safe 0``.
+    text = "ffconcat version 1.0\n" + "\n".join(_ffconcat_quote(path) for path in paths) + "\n"
 
     def build(output: Path) -> None:
+        replace_text(list_path, text, newline="\n")
         run(["-f", "concat", "-safe", "0", "-i", str(list_path), "-c", "copy", str(output)])
 
     return cache.get_or_build("concat-video", key, build)
+
+
+def _drawable_font(overlay: Any, root: Path, warnings: list[str]) -> Any:
+    """``overlay`` with a ``family`` it may be drawn with: a font that is neither bundled nor a
+    file of the project (a UNC or absolute path, a missing file) becomes the default family."""
+
+    family = getattr(overlay, "family", None)
+    if family is None:
+        return overlay
+    usable = usable_family(family, root)
+    if usable is None:
+        message = unusable_family_message(family)
+        if message not in warnings:
+            warnings.append(message)
+    return overlay if usable == family else overlay.model_copy(update={"family": usable})
 
 
 def _emoji_provider(storyboard: Storyboard, root: Path):
@@ -220,6 +241,7 @@ def _image_overlay_png(
     canvas.paste(image, (overlay.x, overlay.y), image)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(f"{output}.tmp{output.suffix}")
+    temporary.unlink(missing_ok=True)
     try:
         canvas.save(temporary, format="PNG")
         os.replace(temporary, output)
@@ -727,7 +749,7 @@ def _render_final(
     temporary = Path(f"{output}.tmp.mp4")
     temporary.unlink(missing_ok=True)
     graph = Path(f"{output}.tmp.filters.txt")
-    graph.write_text(chain, encoding="utf-8")
+    replace_text(graph, chain, encoding="utf-8")
     args.extend(
         [
             filter_script_option(),
@@ -812,6 +834,7 @@ def build_overlays(
     for source_index, overlay in enumerate(sb.overlays):
         if isinstance(overlay, SfxOverlay):
             continue  # a sound: mixed into the audio bed below
+        overlay = _drawable_font(overlay, root, warnings)
         source_of.append(len(expanded_overlays))
         source_indexes.append(source_index)
         if isinstance(overlay, SpeechCaptionsOverlay):
@@ -1032,6 +1055,12 @@ def compose(
     """
 
     root = Path(root).resolve()
+    expected_total = sum(segment_duration(segment) for segment in sb.segments)
+    if not expected_total <= MAX_SECONDS:
+        raise ValueError(
+            f"The ad would last {expected_total:g}s: AdAnvil renders at most {MAX_SECONDS:g}s. "
+            "Remove segments or shorten them."
+        )
     cache = cache or Cache(root / "cache")
     selected_quality = normalise_quality(quality) or sb.output.quality
     if selected_quality not in {"preview", "final"}:
@@ -1113,6 +1142,18 @@ def compose(
         # A preview must never overwrite the delivered final render.
         output = output.with_name(f"{output.stem}.preview{output.suffix}")
     output.parent.mkdir(parents=True, exist_ok=True)
+    # ``renders/`` is checked when the project opens; a folder inside it could still be a link
+    # planted in a received project, and the render, its report and its sheet go there.
+    real_root = os.path.normcase(os.path.realpath(root))
+    real_parent = os.path.normcase(os.path.realpath(output.parent))
+    try:
+        inside = os.path.commonpath((real_root, real_parent)) == real_root
+    except ValueError:  # another drive
+        inside = False
+    if not inside:
+        raise ValueError(
+            f"output.path: the folder {output.parent} leads outside the project through a link"
+        )
     if progress is not None:
         progress(
             {

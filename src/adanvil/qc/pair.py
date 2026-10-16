@@ -45,6 +45,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 from adanvil.ffmpeg import extract_frame, probe
+from adanvil.text.styles import save_image
 
 FACE_SIZE = 128  # pixels: the square the two faces are resized to
 FRAME_WIDTH = 128  # pixels: the width both frames are resized to when no face is compared
@@ -366,7 +367,7 @@ def pair_preview(
     )
     draw.text((canvas.width - 10 - 7 * len(summary), 12), summary, fill=(255, 220, 90))
     out.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(out, format="JPEG", quality=88)
+    save_image(canvas, out, format="JPEG", quality=88)
     return out
 
 

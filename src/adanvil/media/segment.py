@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from array import array
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -10,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from adanvil import config
-from adanvil.ffmpeg import measure_yavg, probe, run
+from adanvil.ffmpeg import MAX_FPS, MAX_SECONDS, MAX_SIDE, measure_yavg, probe, run
 from adanvil.project import resolve_in_project
 from adanvil.textremoval import RemoveText, build_mask, removal_filter
 from adanvil.vision.framing import face_cover
@@ -59,7 +60,7 @@ class Zoom(BaseModel):
 
 
 class Freeze(BaseModel):
-    hold: float = 1.0
+    hold: float = Field(default=1.0, le=MAX_SECONDS)
     zoom: float = 1.35
     center: tuple[int, int] = (540, 960)
 
@@ -81,9 +82,9 @@ class Punch(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    at: float = Field(ge=0)
+    at: float = Field(ge=0, le=MAX_SECONDS)
     zoom: float = Field(default=1.15, gt=1.0, le=3.0)
-    hold: float = Field(default=0.5, gt=0)
+    hold: float = Field(default=0.5, gt=0, le=MAX_SECONDS)
     center: tuple[int, int] | None = None
 
 
@@ -160,8 +161,14 @@ class ClipSegment(FaceFocusModel):
             raise ValueError("out must be greater than in")
         if not 0.25 <= self.speed <= 4:
             raise ValueError("speed must be between 0.25 and 4")
+        length = (self.out - self.in_) / self.speed + (self.freeze.hold if self.freeze else 0)
+        if not length <= MAX_SECONDS:
+            raise ValueError(
+                f"the segment would last {length:g}s on the timeline (out minus in, divided by "
+                f"speed {self.speed:g}, plus the freeze hold): at most {MAX_SECONDS:g}s. Use a "
+                "shorter in/out range or a higher speed"
+            )
         if self.punch:
-            length = (self.out - self.in_) / self.speed + (self.freeze.hold if self.freeze else 0)
             ordered = sorted(self.punch, key=lambda item: item.at)
             for index, item in enumerate(ordered):
                 if item.at + item.hold > length + 1e-6:
@@ -181,7 +188,7 @@ class ClipSegment(FaceFocusModel):
 class ImageSegment(FaceFocusModel):
     type: Literal["image"] = "image"
     source: str
-    duration: float
+    duration: float = Field(le=MAX_SECONDS)
     motion: Literal["static", "zoom_in"] = "static"
     zoom_to: float = 1.04
     background: str = "blur"
@@ -234,9 +241,9 @@ class ImageSegment(FaceFocusModel):
 
 
 class Format(BaseModel):
-    width: int = 1080
-    height: int = 1920
-    fps: int = 30
+    width: int = Field(default=1080, le=MAX_SIDE)
+    height: int = Field(default=1920, le=MAX_SIDE)
+    fps: int = Field(default=30, le=MAX_FPS)
 
 
 Segment = ClipSegment | ImageSegment
@@ -307,6 +314,9 @@ def _clip_base_filter(seg: ClipSegment, fmt: Format, source_info: Any) -> str:
         tonemap(source_info.color_transfer or "") if source_info.is_hdr else "",
         _clip_post_filter(seg, fmt),
     )
+
+
+_CACHE_FILE_NAME = re.compile(r"[0-9a-f]{1,64}\.png")
 
 
 def _cached_mask(
@@ -391,12 +401,24 @@ def _build_clip_base(
         raise ValueError("mask removal requires a generated mask")
     tone = tonemap(source_info.color_transfer or "") if source_info.is_hdr else ""
     tone_input = f"[0:v]{tone or 'null'}[vin]"
+    # The mask path never goes into the filter graph when it can be avoided: a cache file name
+    # is hex digits, so ffmpeg runs in the mask folder and the graph names the bare file.
+    source = source.absolute()
+    output = output.absolute()
+    run_in: Path | None = None
+    graph_mask = mask_path
+    if mask_path is not None:
+        mask_path = mask_path.absolute()
+        graph_mask = mask_path
+        if _CACHE_FILE_NAME.fullmatch(mask_path.name):
+            graph_mask = Path(mask_path.name)
+            run_in = mask_path.parent
     removal, needs_mask = removal_filter(
         seg.remove_text,
         "[1:v]" if mask_path is not None else None,
         source_info.width or 0,
         source_info.height or 0,
-        mask_path=mask_path,
+        mask_path=graph_mask,
     )
     post, frame_args = _exact_frames(_clip_post_filter(seg, fmt), base_frames)
     graph = f"{tone_input};{removal};[vout]{post}[v]"
@@ -428,7 +450,7 @@ def _build_clip_base(
             str(output),
         ]
     )
-    run(args)
+    run(args, cwd=run_in)
 
 
 def _resolved_gamma(seg: ClipSegment, base: Path) -> float:

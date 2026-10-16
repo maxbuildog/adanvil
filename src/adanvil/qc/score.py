@@ -91,6 +91,7 @@ from adanvil.storyboard.craft import (
     story_checks,
     voice_lines,
 )
+from adanvil.text.styles import save_image
 
 from .pair import find_face
 
@@ -373,9 +374,8 @@ def caption_contrast(
     if spec.style not in _DEFAULTS or spec.style == "comment":
         return None
     if spec.family is not None:
-        family = _family_for_render(spec.family, root)
-        if family is not None:
-            spec = spec.model_copy(update={"family": family})
+        # a font that is not bundled nor a file of the project is replaced by the default
+        spec = spec.model_copy(update={"family": _family_for_render(spec.family, root)})
     fg_name = spec.fg or str(_DEFAULTS[spec.style]["fg"])
     fg = np.array(ImageColor.getcolor(fg_name, "RGBA")[:3], dtype=np.int32)
     canvas = frame.size
@@ -1320,7 +1320,7 @@ def _images(
             raw = Path(temporary) / "frame.png"
             extract_frame(ctx.video, when, raw, width=540, on_screen=True)
             with Image.open(raw) as opened:
-                opened.convert("RGB").save(target, format="JPEG", quality=88)
+                save_image(opened.convert("RGB"), target, format="JPEG", quality=88)
         images.append(target)
         taken += 1
     return images

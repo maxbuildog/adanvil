@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from importlib.resources import files
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from PIL import ImageFont
+
+from adanvil.project import resolve_in_project
 
 _FONT_DIR = files("adanvil") / "assets" / "fonts"
 
@@ -19,6 +22,85 @@ FAMILIES: dict[str, dict[int, str] | str] = {
     "roboto": "Roboto-VF.ttf",
     "poppins": {600: "Poppins-SemiBold.ttf", 700: "Poppins-Bold.ttf"},
 }
+
+
+FONT_SUFFIXES = (".ttf", ".otf", ".ttc")
+
+
+def _is_network_path(value: str) -> bool:
+    """Whether ``value`` names a UNC, device or network-drive path: opening one makes Windows
+    send the user's credentials to that server, so it is never touched."""
+
+    if value.startswith(("\\\\", "//")):
+        return True
+    drive = PureWindowsPath(value).drive
+    if not drive or os.name != "nt":
+        return False
+    if drive.startswith("\\\\"):
+        return True
+    try:
+        import ctypes
+
+        drive_type = ctypes.windll.kernel32.GetDriveTypeW(drive + "\\")  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        return False
+    return drive_type == 4  # DRIVE_REMOTE
+
+
+def is_font_reference(family: str) -> bool:
+    """Whether ``family`` is written as a font file (a path or a ``.ttf``, ``.otf``, ``.ttc``
+    name) rather than as the name of a bundled family."""
+
+    if family.lower() in FAMILIES:
+        return False
+    return any(mark in family for mark in "/\\") or family.lower().endswith(FONT_SUFFIXES)
+
+
+def usable_family(family: str | None, root: Path | None) -> str | None:
+    """``family`` when a text may be drawn with it, else ``None`` (the default family is used).
+
+    A bundled family name is returned as written. A font file (``.ttf``, ``.otf``, ``.ttc``)
+    is returned as its absolute path when it is a regular file of the project at ``root``,
+    written relative to it or as an absolute path inside it, and its real path stays inside the
+    project (a link out of it is refused). Anything else is ``None``: a UNC or network path
+    (never touched), a file outside the project, a missing file, an unknown name.
+    """
+
+    if not isinstance(family, str) or not family.strip() or "\x00" in family:
+        return None
+    if family.lower() in FAMILIES:
+        return family
+    if root is None or _is_network_path(family):
+        return None
+    try:
+        if Path(family).is_absolute() or PureWindowsPath(family).is_absolute():
+            candidate = os.path.abspath(family)
+            project = os.path.abspath(root)
+            if os.path.normcase(os.path.commonpath((project, candidate))) != os.path.normcase(
+                project
+            ):
+                return None
+        else:
+            candidate = os.path.abspath(resolve_in_project(Path(root), family))
+        if not candidate.lower().endswith(FONT_SUFFIXES):
+            return None
+        real_root = os.path.normcase(os.path.realpath(root))
+        real = os.path.normcase(os.path.realpath(candidate))
+        if os.path.commonpath((real_root, real)) != real_root or not os.path.isfile(real):
+            return None
+    except (OSError, TypeError, ValueError):
+        return None
+    return candidate
+
+
+def unusable_family_message(family: str) -> str:
+    """Why ``family`` is not used and what is: the warning shown when it is replaced."""
+
+    known = ", ".join(sorted(FAMILIES))
+    return (
+        f"font {family!r} is neither a bundled family ({known}) nor a font file "
+        "(.ttf, .otf, .ttc) inside the project; the default family is used"
+    )
 
 
 def _axis_info(font: ImageFont.FreeTypeFont) -> list[dict[str, Any]]:
@@ -37,7 +119,16 @@ def _axis_name(axis: dict[str, Any]) -> str:
 
 def _font_path(family: str, weight: int) -> tuple[Path, int | None]:
     path = Path(family)
-    if path.is_absolute() and path.suffix.lower() in {".ttf", ".otf", ".ttc"}:
+    if path.is_absolute() and path.suffix.lower() in FONT_SUFFIXES:
+        # Second line of defence (the callers send a project font through ``usable_family``):
+        # never open a network path, nor anything that is not an existing regular file.
+        if _is_network_path(family):
+            raise ValueError(
+                f"Font {family!r} is a network path: use a bundled family or a font file "
+                "inside the project"
+            )
+        if not path.is_file():
+            raise ValueError(f"Font file not found: {family!r} is not an existing regular file")
         return path, weight
 
     key = family.lower()

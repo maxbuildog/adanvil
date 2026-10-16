@@ -1,7 +1,7 @@
 """Fix a misheard word in the speech captions without putting words in a speaker's mouth.
 
 ``speech_captions.corrections`` maps a word as it was heard to the word to show:
-``{"rites": "rides"}``. It is applied word by word, ignoring case, and keeps the punctuation
+``{"tasks": "tasses"}``. It is applied word by word, ignoring case, and keeps the punctuation
 around the word. A correction must be close to the heard word (the character ratio of the two
 spellings is at least 0.5): changing a word into a very different one is not a spelling fix, it
 is a different sentence, so the clip must be transcribed again instead (``speech_refine``).
@@ -75,7 +75,7 @@ def check_corrections(corrections: Mapping[str, str]) -> list[str]:
 def _carry_case(heard: str, shown: str) -> str:
     """A lower-case replacement takes the capitals of the heard word it replaces.
 
-    ``Rites`` (a sentence start) becomes ``Rides`` and ``RITES`` becomes ``RIDES``; a replacement
+    ``Tasks`` (a sentence start) becomes ``Tasses`` and ``TASKS`` becomes ``TASSES``; a replacement
     written with capitals of its own (a brand name) is shown as written.
     """
 

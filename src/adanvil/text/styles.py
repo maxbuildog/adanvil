@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import io
 import re
 from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from PIL import Image, ImageColor, ImageDraw, ImageFilter
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+from adanvil.safeio import replace_bytes
 
 from .chunking import is_mark, is_opening_mark, match_emphasis
 from .emoji import EmojiProvider, NoEmojiProvider, split_runs
@@ -99,6 +102,20 @@ class TextSpec(BaseModel):
 DEFAULT_HIGHLIGHT = "#FFD400"
 
 
+def save_image(image: Image.Image, path: str | Path, **options: Any) -> Path:
+    """Save ``image`` at ``path`` through a new file and a rename, so a link planted at ``path``
+    is replaced, never followed. The format is ``options["format"]``, else the extension's."""
+
+    destination = Path(path)
+    image_format = options.pop("format", None)
+    if image_format is None:
+        image_format = Image.registered_extensions().get(destination.suffix.lower(), "PNG")
+    buffer = io.BytesIO()
+    image.save(buffer, format=image_format, **options)
+    replace_bytes(destination, buffer.getvalue())
+    return destination
+
+
 @dataclass
 class RenderResult:
     image: Image.Image
@@ -108,9 +125,7 @@ class RenderResult:
     lines: list[str]
 
     def save(self, path: str | Path) -> None:
-        destination = Path(path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        self.image.save(destination)
+        save_image(self.image, path)
 
 
 _DEFAULTS: dict[str, dict[str, object]] = {

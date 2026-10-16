@@ -64,7 +64,7 @@ def fold(word: str) -> str:
 
 
 _EMPHASIS_EDGE = ".,;:!?…\"'«»“”‘’()[]{}*_–—"
-_SPLIT_PARTS = re.compile(r"(?<=\w)['’\-](?=\w)")  # inside a word: l'éclat, anti-âge
+_SPLIT_PARTS = re.compile(r"(?<=\w)['’\-](?=\w)")  # inside a word: l'été, porte-clés
 
 
 def _plain(word: str) -> str:
@@ -79,7 +79,7 @@ def emphasis_key(text: str) -> str:
     """Comparable form of an emphasis word or a spoken word, numbers and prices included.
 
     Case, accents, spaces and the punctuation around the text are dropped; a decimal comma or
-    dot between digits is one dot, so ``65,90 €``, ``65.90€`` and ``65,90€.`` give the same key;
+    dot between digits is one dot, so ``24,90 €``, ``24.90€`` and ``24,90€.`` give the same key;
     a sign before a number or a currency is kept (``-20%``).
     """
 
@@ -131,10 +131,10 @@ def _entry_units(entry: str) -> list[str]:
 def match_emphasis(words: list[str], entries: list[str]) -> tuple[set[int], list[str]]:
     """The indexes of the spoken ``words`` that ``entries`` emphasise, and the unmatched entries.
 
-    An entry is one or several consecutive words (``65,90 €``, ``livraison offerte``). It matches
+    An entry is one or several consecutive words (``24,90 €``, ``livraison offerte``). It matches
     a word with the same key (see ``emphasis_key``) or, for a single word, one of the parts of a
-    hyphenated or elided word. An entry that is a plain number (``65,90``) also matches that
-    number with a currency or percent sign (``65,90 €``). An entry with no letter or digit at
+    hyphenated or elided word. An entry that is a plain number (``24,90``) also matches that
+    number with a currency or percent sign (``24,90 €``). An entry with no letter or digit at
     all (an empty string, a lone punctuation mark) is ignored.
     """
 

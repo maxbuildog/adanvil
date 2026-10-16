@@ -5,7 +5,7 @@ Search sources are Openverse (no key) and, when ``FREESOUND_API_KEY`` is set, Fr
 licences that allow commercial use AND modification are kept: CC0, PDM, CC BY, CC BY-SA. NC and ND
 licences are dropped, whatever the source says. A fetched track lands in ``music/`` with a sidecar
 ``<file>.licence.json`` and a line in ``music/LICENCES.txt``; the render reads that record.
-Standard library only for the network (``urllib``).
+Every download goes through ``adanvil.netguard`` (public http(s) hosts only, capped size).
 """
 
 from __future__ import annotations
@@ -15,16 +15,18 @@ import json
 import os
 import re
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
-import urllib.request
+import uuid
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-from adanvil import __version__
+from adanvil import __version__, netguard
 from adanvil.audio import AUDIO_SUFFIXES
 from adanvil.project import resolve_in_project
+from adanvil.safeio import replace_text
 
 MUSIC_DIR = "music"
 LICENCE_SUFFIX = ".licence.json"
@@ -35,6 +37,7 @@ FREESOUND_API = "https://freesound.org/apiv2/"
 FREESOUND_KEY_ENV = "FREESOUND_API_KEY"
 SOURCES = ("openverse", "freesound", "all")
 MAX_DOWNLOAD_BYTES = 120 * 1024 * 1024
+MAX_JSON_BYTES = 8 * 1024 * 1024
 _TIMEOUT = 30.0
 
 # Licence codes (Openverse spelling) that allow commercial use and modification.
@@ -128,8 +131,8 @@ class MusicError(RuntimeError):
 # --------------------------------------------------------------------------------- network
 
 
-def _request(url: str, headers: dict[str, str] | None = None):
-    return urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
+def _headers(headers: dict[str, str] | None = None) -> dict[str, str]:
+    return {"User-Agent": USER_AGENT, **(headers or {})}
 
 
 def _http_json(url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
@@ -139,8 +142,12 @@ def _http_json(url: str, headers: dict[str, str] | None = None) -> dict[str, Any
     last: Exception | None = None
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(_request(url, headers), timeout=_TIMEOUT) as response:
-                return json.loads(response.read().decode("utf-8"))
+            reply = netguard.fetch(
+                url, timeout=_TIMEOUT, max_bytes=MAX_JSON_BYTES, headers=_headers(headers)
+            )
+            return json.loads(reply.body.decode("utf-8"))
+        except netguard.NetguardError as exc:
+            raise MusicError(f"refused {url.split('?')[0]}: {exc}") from exc
         except urllib.error.HTTPError as exc:
             last = exc
             if exc.code in (429, 500, 502, 503, 504) and attempt < 2:
@@ -170,26 +177,19 @@ def _http_download(url: str, destination: Path) -> int:
 
     partial = destination.with_name(destination.name + ".part")
     partial.unlink(missing_ok=True)
-    size = 0
     try:
-        with (
-            urllib.request.urlopen(_request(url), timeout=60.0) as response,
-            partial.open("wb") as out,
-        ):
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > MAX_DOWNLOAD_BYTES:
-                    raise MusicError("the file is larger than 120 MB: refused")
-                out.write(chunk)
+        size = netguard.fetch_to_file(
+            url, partial, timeout=60.0, max_bytes=MAX_DOWNLOAD_BYTES, headers=_headers()
+        ).size
         if size == 0:
             raise MusicError("the download is empty")
         os.replace(partial, destination)
     except MusicError:
         partial.unlink(missing_ok=True)
         raise
+    except netguard.NetguardError as exc:
+        partial.unlink(missing_ok=True)
+        raise MusicError(f"refused {url.split('?')[0]}: {exc}") from exc
     except Exception as exc:
         partial.unlink(missing_ok=True)
         raise MusicError(f"could not download {url.split('?')[0]}: {exc}") from exc
@@ -315,6 +315,12 @@ def _freesound_key() -> str | None:
     return os.environ.get(FREESOUND_KEY_ENV, "").strip() or None
 
 
+def _freesound_headers(key: str) -> dict[str, str]:
+    """The key goes in a header, never in the URL (which is logged and shown in errors)."""
+
+    return {"Authorization": f"Token {key}"}
+
+
 def _freesound_track(item: dict[str, Any]) -> dict[str, Any] | None:
     licence = _freesound_licence(item.get("license"))
     previews = item.get("previews") or {}
@@ -352,9 +358,11 @@ def search_freesound(query: str, key: str, *, limit: int) -> list[dict[str, Any]
         "filter": 'license:("Creative Commons 0" OR "Attribution") duration:[20 TO *]',
         "fields": _FREESOUND_FIELDS,
         "page_size": str(max(1, min(limit, 50))),
-        "token": key,
     }
-    data = _http_json(FREESOUND_API + "search/text/?" + urllib.parse.urlencode(params))
+    data = _http_json(
+        FREESOUND_API + "search/text/?" + urllib.parse.urlencode(params),
+        _freesound_headers(key),
+    )
     tracks = []
     for item in data.get("results") or []:
         track = _freesound_track(item)
@@ -560,8 +568,8 @@ def _openverse_detail(identifier: str) -> dict[str, Any]:
 def _freesound_detail(identifier: str, key: str) -> dict[str, Any]:
     if not re.fullmatch(r"\d{1,12}", identifier):
         raise MusicError(f"not a Freesound id: {identifier!r}")
-    params = urllib.parse.urlencode({"fields": _FREESOUND_FIELDS, "token": key})
-    return _http_json(f"{FREESOUND_API}sounds/{identifier}/?{params}")
+    params = urllib.parse.urlencode({"fields": _FREESOUND_FIELDS})
+    return _http_json(f"{FREESOUND_API}sounds/{identifier}/?{params}", _freesound_headers(key))
 
 
 def strip_cover_art(path: Path) -> bool:
@@ -579,7 +587,7 @@ def strip_cover_art(path: Path) -> bool:
         return False
     if not any(stream.get("codec_type") == "video" for stream in streams):
         return False
-    clean = path.with_name(f"{path.stem}.clean{path.suffix}")
+    clean = path.with_name(f".{path.stem}.{uuid.uuid4().hex}.clean{path.suffix}")
     try:
         run(
             [
@@ -676,29 +684,48 @@ def music_fetch(root: Path, source: str, identifier: str) -> dict[str, Any]:
     }
 
 
+def _plain(value: Any) -> str:
+    """One line of plain text: carriage return, line feed, tab, the other control characters
+    and the Unicode line and paragraph separators become spaces, invisible format characters
+    are dropped. A title or an author taken from a web service so cannot end a line of
+    ``LICENCES.txt`` and start the line of another file."""
+
+    kept = []
+    for char in str(value):
+        category = unicodedata.category(char)
+        if category in ("Cc", "Zl", "Zp"):
+            kept.append(" ")
+        elif category != "Cf":
+            kept.append(char)
+    return " ".join("".join(kept).split())
+
+
 def write_licence_record(root: Path, relative: str, record: dict[str, Any]) -> None:
     """Write ``<file>.licence.json`` and append a line to ``music/LICENCES.txt``."""
 
     root = Path(root)
     path = root / (relative + LICENCE_SUFFIX)
-    path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     log = root / MUSIC_DIR / LICENCES_FILE
+    if log.is_symlink():
+        raise MusicError(f"{MUSIC_DIR}/{LICENCES_FILE} is a symbolic link: replace it with a file")
+    replace_text(path, json.dumps(record, ensure_ascii=False, indent=2) + "\n")
     needs = (
-        ' Attribution required: "' + record["attribution_text"] + '"'
+        ' Attribution required: "' + _plain(record["attribution_text"]) + '"'
         if record.get("attribution_required")
         else " No attribution required."
     )
     line = (
-        f'{Path(relative).name}: "{record["title"]}" by {record["author"]}, '
-        f"{record['licence']} ({record['licence_url']}), {record['source']} {record['id']} "
-        f"({record['url']}), fetched {record['fetch_date']}.{needs}\n"
+        f'{_plain(Path(relative).name)}: "{_plain(record["title"])}" by '
+        f"{_plain(record['author'])}, {_plain(record['licence'])} "
+        f"({_plain(record['licence_url'])}), {_plain(record['source'])} {_plain(record['id'])} "
+        f"({_plain(record['url'])}), fetched {_plain(record['fetch_date'])}.{needs}\n"
     )
     existing = log.read_text(encoding="utf-8") if log.is_file() else ""
     if not existing:
         existing = "Music tracks of this project: source and licence of each.\n"
     elif not existing.endswith("\n"):
         existing += "\n"
-    log.write_text(existing + line, encoding="utf-8")
+    replace_text(log, existing + line)
 
 
 # --------------------------------------------------------------------- the licence of a render
@@ -785,9 +812,12 @@ def read_ledger_record(root: Path, relative: str) -> dict[str, Any] | None:
     name = Path(relative).name
     ledger = Path(root) / MUSIC_DIR / LICENCES_FILE
     try:
-        lines = ledger.read_text(encoding="utf-8").splitlines()
+        text = ledger.read_text(encoding="utf-8")
     except OSError:
         return None
+    # Lines end at "\n" only: ``splitlines`` would also cut at U+2028, form feed and the other
+    # separators, so a title could still start a line of its own.
+    lines = [line.rstrip("\r") for line in text.split("\n")]
     found: dict[str, Any] | None = None
     for number, line in enumerate(lines, start=1):
         head, separator, rest = line.partition(":")
@@ -812,6 +842,10 @@ def read_ledger_record(root: Path, relative: str) -> dict[str, Any] | None:
             "title": None,
             "ledger_line": number,
             **_ledger_details(rest, licence),
+        }
+    if found is not None:
+        found = {
+            key: _plain(value) if isinstance(value, str) else value for key, value in found.items()
         }
     return found
 

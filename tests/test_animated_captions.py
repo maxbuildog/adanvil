@@ -182,15 +182,15 @@ def _green_columns(spec: TextSpec) -> tuple[int, int] | None:
 
 
 def test_emphasis_draws_listed_words_in_the_highlight_colour() -> None:
-    lines = ["Free shipping on every Éclat order"]
+    lines = ["Free shipping on every Café order"]
     base = {"style": "outline", "lines": lines, "y": 500, "highlight": GREEN}
     assert _green_columns(TextSpec(**base)) is None
     # Case and accents do not matter, and only the listed word is lit.
-    lit = _green_columns(TextSpec(**base, emphasis=["ECLAT"]))
+    lit = _green_columns(TextSpec(**base, emphasis=["CAFE"]))
     only_free = _green_columns(TextSpec(**base, emphasis=["free"]))
     assert lit is not None and only_free is not None
-    assert only_free[1] < lit[0]  # "Free" is the first word, "Éclat" comes later
-    both = _green_columns(TextSpec(**base, emphasis=["free", "eclat"]))
+    assert only_free[1] < lit[0]  # "Free" is the first word, "Café" comes later
+    both = _green_columns(TextSpec(**base, emphasis=["free", "cafe"]))
     assert both == (only_free[0], lit[1])
 
 

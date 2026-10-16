@@ -16,6 +16,11 @@ from adanvil._bin import ffmpeg_path, ffprobe_path
 from adanvil._proc import NO_WINDOW
 
 _TAIL_LINES = 20
+# The largest picture, frame rate and duration AdAnvil renders: whatever the inputs compute to,
+# no ffmpeg command is started for more than this.
+MAX_SIDE = 4096  # pixels, width and height
+MAX_FPS = 120
+MAX_SECONDS = 600.0
 _IMAGE_CODECS = {"png", "mjpeg", "webp", "bmp", "tiff"}
 _YAVG_RE = re.compile(r"YAVG=([-+]?(?:\d+(?:\.\d*)?|\.\d+))")
 _PTS_TIME_RE = re.compile(r"pts_time:([-+]?(?:\d+(?:\.\d*)?|\.\d+))")
@@ -70,6 +75,7 @@ def _run_binary(
     try:
         completed = subprocess.run(
             command,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE if capture_stdout else None,
             stderr=subprocess.PIPE,
             timeout=timeout,
@@ -88,6 +94,62 @@ def _run_binary(
     return completed
 
 
+_INPUT_PROTOCOLS = ["-protocol_whitelist", "file"]
+
+
+# A media file AdAnvil hands to ffmpeg must be a media file. A playlist or session file named
+# like a video (DASH, HLS, SMIL, PLS, SDP, an ffconcat list) is sniffed by ffmpeg and opened as
+# such; some builds (a 7.0 static build, measured) then fetch its URLs even under
+# ``-protocol_whitelist file``. So the first bytes of every input are read first.
+_PLAYLIST_STARTS = (b"#extm3u", b"ffconcat", b"[playlist]", b"v=0", b"#ext-x-")
+_PLAYLIST_TAGS = (b"<mpd", b"<smil", b"#ext-x-", b"<playlist")
+
+
+def _looks_like_playlist(path: Path) -> bool:
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(2048)
+    except OSError:
+        return False  # not a readable file: ffmpeg reports it
+    text = head.lstrip(bytes([0xEF, 0xBB, 0xBF, 0x20, 0x09, 0x0D, 0x0A])).lower()
+    return text.startswith(_PLAYLIST_STARTS) or any(tag in text for tag in _PLAYLIST_TAGS)
+
+
+def _refuse_playlist(value: str, cwd: Path | None) -> None:
+    path = Path(value)
+    if not path.is_absolute() and cwd is not None:
+        path = Path(cwd) / path
+    if path.is_file() and _looks_like_playlist(path):
+        raise ValueError(
+            f"{value} is a playlist or stream description, not a media file: refused "
+            "(AdAnvil only reads local media files)"
+        )
+
+
+def _local_inputs_only(args: list[str], cwd: Path | None = None) -> list[str]:
+    """``args`` with ``-protocol_whitelist file`` before every ``-i``: an input can only be a
+    local file, so a crafted path or a playlist disguised as a video (HLS, concat) cannot make
+    ffmpeg reach the network or another protocol."""
+
+    safe: list[str] = []
+    position = 0
+    forced: str | None = None  # the ``-f`` given for the next input, if any
+    while position < len(args):
+        if args[position] == "-f" and position + 1 < len(args):
+            forced = args[position + 1]
+        if args[position] == "-i" and position + 1 < len(args):
+            # the value after ``-i`` is the input itself, even when it looks like an option
+            if forced not in {"concat", "lavfi"}:  # AdAnvil's own lists and generated sources
+                _refuse_playlist(args[position + 1], cwd)
+            safe.extend([*_INPUT_PROTOCOLS, "-i", args[position + 1]])
+            position += 2
+            forced = None
+            continue
+        safe.append(args[position])
+        position += 1
+    return safe
+
+
 def run(
     args: list[str],
     *,
@@ -99,12 +161,12 @@ def run(
 
     ``cwd`` is the working directory of the process: with it, input paths can be given
     relative to it, which keeps a command with hundreds of inputs under the Windows limit
-    of 32767 characters.
+    of 32767 characters. Every input is limited to the ``file`` protocol.
     """
     command_args = ["-nostdin", "-y"]
     if "-loglevel" not in args:
         command_args.extend(["-loglevel", "error"])
-    command_args.extend(args)
+    command_args.extend(_local_inputs_only(args, cwd))
     return _run_binary(
         ffmpeg_path(),
         command_args,
@@ -138,9 +200,13 @@ def filter_script_option() -> str:
 
 
 def run_probe(args: list[str]) -> str:
-    """Run ffprobe and return its decoded stdout, raising on probe failure."""
+    """Run ffprobe and return its decoded stdout, raising on probe failure. The input is
+    limited to the ``file`` protocol."""
+    for value in args:
+        if not value.startswith("-"):
+            _refuse_playlist(value, None)
     completed = _run_binary(
-        ffprobe_path(), ["-v", "error", *args], capture_stdout=True
+        ffprobe_path(), ["-v", "error", *_INPUT_PROTOCOLS, *args], capture_stdout=True
     )
     stdout = completed.stdout
     if isinstance(stdout, bytes):
@@ -507,5 +573,8 @@ def extract_frame(
     if width is not None:
         args.extend(["-vf", f"scale={width}:-2"])
     args.extend(["-frames:v", "1", "-an", "-c:v", "png", str(out)])
+    # ffmpeg opens the output name as it is: drop a link planted there instead of writing
+    # through it
+    Path(out).unlink(missing_ok=True)
     run(args)
     return out

@@ -31,6 +31,7 @@ YUNET_URL = (
 )
 YUNET_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
 YUNET_FILE = "face_detection_yunet_2023mar.onnx"
+YUNET_MAX_BYTES = 8 * 1024 * 1024  # the file is 227 KB: anything much bigger is not it
 FACE_SCORE_MIN = 0.7
 FACE_LONG_SIDE = 640  # pictures are detected at this long side (YuNet sees 10 to 300 px faces)
 TEXT_LENGTH = 64  # SigLIP texts are padded to this many tokens
@@ -77,8 +78,8 @@ def _fetch_yunet() -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     request = urllib.request.Request(YUNET_URL, headers={"User-Agent": "adanvil-vision-setup"})
     with urllib.request.urlopen(request, timeout=120) as reply:  # noqa: S310 (pinned https URL)
-        data = reply.read()
-    if hashlib.sha256(data).hexdigest() != YUNET_SHA256:
+        data = reply.read(YUNET_MAX_BYTES + 1)
+    if len(data) > YUNET_MAX_BYTES or hashlib.sha256(data).hexdigest() != YUNET_SHA256:
         raise RuntimeError("the downloaded YuNet file does not match its pinned SHA-256")
     temporary = path.with_name(f".{path.name}.tmp")
     temporary.write_bytes(data)

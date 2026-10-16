@@ -17,6 +17,7 @@ from adanvil.audio import rms_per_second
 from adanvil.ffmpeg import FFmpegError, extract_frame, probe, run
 from adanvil.media import Format, contact_sheet
 from adanvil.render.compose import RenderReport
+from adanvil.text.styles import save_image
 
 CheckStatus = Literal["pass", "warn", "fail"]
 
@@ -272,7 +273,7 @@ def _overlay_times(item: dict[str, Any], duration: float) -> tuple[float, float]
 
 
 def _save_jpeg(image: Image.Image, path: Path) -> None:
-    image.convert("RGB").save(path, format="JPEG", quality=92)
+    save_image(image.convert("RGB"), path, format="JPEG", quality=92)
 
 
 def _slug(text: Any, limit: int = 30) -> str:

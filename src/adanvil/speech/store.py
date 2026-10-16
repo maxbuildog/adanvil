@@ -8,16 +8,17 @@ from __future__ import annotations
 
 import json
 import os
-import uuid
 from pathlib import Path
 from typing import Any
 
 from adanvil.media.cache import Cache
 from adanvil.project import resolve_in_project
+from adanvil.safeio import replace_text
 
 from .model import SpeechData, SpeechWord
 
 SIDECAR_VERSION = 1
+SIDECAR_DIR = "cache/speech"
 
 
 def sidecar_relative(file_key: dict[str, Any]) -> str:
@@ -52,14 +53,10 @@ def write_sidecar(root: Path, relative: str, data: SpeechData, *, source: str, m
             "db": [round(float(value), 1) for value in data.levels_db],
         },
     }
-    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        temporary.write_text(
-            json.dumps(document, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
-        )
-        os.replace(temporary, destination)
-    finally:
-        temporary.unlink(missing_ok=True)
+    # a new file renamed into place: a link planted at the destination is replaced, not followed
+    replace_text(
+        destination, json.dumps(document, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
+    )
 
 
 def read_sidecar(root: Path, relative: str | None) -> SpeechData | None:
@@ -93,15 +90,37 @@ def read_sidecar(root: Path, relative: str | None) -> SpeechData | None:
         return None
 
 
+def _sidecar_file(root: Path, relative: str) -> Path | None:
+    """The file a catalogue entry names as its sidecar, only when it is a ``.json`` directly in
+    ``cache/speech/``: catalog.json is a project file anyone can plant, and what it names must
+    never make AdAnvil delete a file of the project."""
+
+    path = resolve_in_project(Path(root), relative)
+    folder = resolve_in_project(Path(root), SIDECAR_DIR)
+    if os.path.normcase(path.parent) != os.path.normcase(folder) or path.suffix != ".json":
+        return None
+    return path
+
+
 def remove_sidecar(root: Path, relative: str | None) -> None:
-    """Delete a sidecar that no entry points to any more (best effort)."""
+    """Delete a sidecar that no entry points to any more (best effort). Only a file of
+    ``cache/speech/`` is ever deleted; any other path is ignored."""
 
     if not relative:
         return
     try:
-        resolve_in_project(Path(root), relative).unlink(missing_ok=True)
+        path = _sidecar_file(root, relative)
+        if path is not None:
+            path.unlink(missing_ok=True)
     except (OSError, ValueError, TypeError):
         pass
 
 
-__all__ = ["SIDECAR_VERSION", "read_sidecar", "remove_sidecar", "sidecar_relative", "write_sidecar"]
+__all__ = [
+    "SIDECAR_DIR",
+    "SIDECAR_VERSION",
+    "read_sidecar",
+    "remove_sidecar",
+    "sidecar_relative",
+    "write_sidecar",
+]

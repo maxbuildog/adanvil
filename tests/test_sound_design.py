@@ -260,14 +260,10 @@ def test_a_failed_download_is_replaced_by_the_generated_sound(
 def test_download_file_discards_a_file_with_the_wrong_hash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    class Response(io.BytesIO):
-        def __enter__(self) -> Response:
-            return self
+    def fake_fetch(url: str, destination: Path, **_kw: Any) -> None:
+        Path(destination).write_bytes(b"payload")
 
-        def __exit__(self, *_args: object) -> None:
-            self.close()
-
-    monkeypatch.setattr(sfx.urllib.request, "urlopen", lambda *_a, **_k: Response(b"payload"))
+    monkeypatch.setattr(sfx.netguard, "fetch_to_file", fake_fetch)
     target = tmp_path / "x.zip"
     with pytest.raises(sfx.SfxError, match="SHA-1 mismatch"):
         sfx.download_file("https://example.test/x.zip", "0" * 40, target)

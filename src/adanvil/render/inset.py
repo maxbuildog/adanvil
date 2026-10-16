@@ -114,6 +114,7 @@ def _shape(
 def _save(image: Image.Image, final: Path) -> Path:
     final.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(f"{final}.tmp{final.suffix}")
+    temporary.unlink(missing_ok=True)
     try:
         image.save(temporary, format="PNG")
         os.replace(temporary, final)

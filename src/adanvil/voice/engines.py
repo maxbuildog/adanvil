@@ -7,6 +7,7 @@ import json
 import math
 import os
 import queue
+import re
 import shutil
 import struct
 import subprocess
@@ -22,6 +23,11 @@ from typing import IO, Protocol
 
 from adanvil._proc import NO_WINDOW
 from adanvil.ffmpeg import probe, run
+from adanvil.safeio import replace_text
+
+# A Kokoro voice is a name like ``af_heart``: Kokoro treats a value ending in ``.pt`` as a file
+# to load and a comma as a blend, so nothing else reaches the worker (which checks it again).
+KOKORO_VOICE = re.compile(r"[a-z]{2}_[a-z0-9]+")
 
 
 class VoiceUnavailableError(RuntimeError):
@@ -430,7 +436,7 @@ class WorkerEngine:
         jobs_path = cache_dir / f".jobs-{token}.json"
         results_path = cache_dir / f".results-{token}.json"
         try:
-            jobs_path.write_text(json.dumps({"ops": ops}), encoding="utf-8")
+            replace_text(jobs_path, json.dumps({"ops": ops}))
             try:
                 log_path = cache_dir / f".worker-{token}.log"
                 worker_log = open(log_path, "w", encoding="utf-8", errors="replace")  # noqa: SIM115
@@ -520,6 +526,10 @@ class WorkerEngine:
             if line.out is None or (self.engine != "kokoro" and line.reference is None):
                 raise ValueError("Chatterbox lines require reference and out paths")
             if self.engine == "kokoro":
+                if line.voice is not None and not KOKORO_VOICE.fullmatch(line.voice):
+                    raise ValueError(
+                        f"{line.voice!r} is not a Kokoro voice name such as af_heart or ff_siwis"
+                    )
                 operations.append(
                     {
                         "op": "tts",

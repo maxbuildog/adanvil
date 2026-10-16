@@ -14,7 +14,7 @@ only rows of the same quality. ``width`` and ``height`` of a render are those of
 
 ``CTA id`` is the id of the variant's ``cta`` axis (empty without one). When the batch has several
 CTA variants, ``CTA text`` lists only the texts that differ between them, each with its role
-(``caption: 65,90 € au lieu de 89,90 € | badge: Satisfaite ou remboursée 60 jours``; a phrase
+(``caption: 24,90 € au lieu de 34,90 € | badge: Satisfait ou remboursé 30 jours``; a phrase
 shared by two CTAs but in another role still tells them apart), so two calls to action are told
 apart at a glance; with no CTA axis, or when nothing differs, it is the whole text of the call
 to action.
@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import copy
 import csv
+import io
 import json
 import re
 import time
@@ -38,6 +39,7 @@ from typing import Any
 from adanvil.ffmpeg import probe
 from adanvil.formats import FORMATS, format_name, ratio_of, reformat, requested_formats
 from adanvil.music import licence_label
+from adanvil.safeio import replace_text
 from adanvil.safezones import platforms_for_size
 from adanvil.storyboard.patch import storyboard_name
 from adanvil.storyboard.schema import normalise_quality
@@ -63,6 +65,9 @@ CTA_AXIS = "cta"
 CTA_SEPARATOR = " | "
 HOOK_SECONDS = 3.0
 _BATCH_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
+# A cell that starts with one of these is a formula for a spreadsheet (a caption text can say
+# anything): the manifest prefixes it with a quote so it opens as text.
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 
 
 def batch_name(name: str) -> str:
@@ -207,7 +212,7 @@ def _cta_text(model: Any, entries: list[Any], total: float) -> str:
 
 def _cta_pieces(model: Any, entries: list[Any], total: float) -> list[str]:
     """The texts shown during the call to action part, one by one, each with its role
-    (``caption: 65,90 € au lieu de 89,90 €``, ``badge: Satisfaite ou remboursée 60 jours``), most
+    (``caption: 24,90 € au lieu de 34,90 €``, ``badge: Satisfait ou remboursé 30 jours``), most
     prominent first (captions, largest first, then comments, then badges): what tells two CTAs
     apart, even when they share phrases in other roles.
 
@@ -302,6 +307,12 @@ def _cta_texts(renders: list[dict[str, Any]]) -> dict[str, str]:
     return found
 
 
+def _csv_safe(cell: str) -> str:
+    """``cell`` as a spreadsheet shows it as text: a leading quote when it would be a formula."""
+
+    return "'" + cell if cell.startswith(_FORMULA_START) else cell
+
+
 def _row(entry: dict[str, Any], texts: dict[str, str] | None = None) -> list[str]:
     ids = entry.get("ids") or {}
     cta_id = str(ids.get(CTA_AXIS, ""))
@@ -364,10 +375,13 @@ def write_manifest(root: Path, batch: str, renders: list[dict[str, Any]]) -> Pat
         else:
             position[row[0]] = len(rows)
             rows.append(row)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(MANIFEST_COLUMNS)
-        writer.writerows(rows)
+    table = io.StringIO()
+    writer = csv.writer(table)
+    writer.writerow(MANIFEST_COLUMNS)
+    writer.writerows([_csv_safe(cell) for cell in row] for row in rows)
+    # newline="": the csv module writes its own line ends. Only the CSV is protected, the JSON
+    # results keep the texts as they are.
+    replace_text(path, table.getvalue(), encoding="utf-8", newline="")
     return path
 
 
@@ -446,8 +460,10 @@ def run_batch(
             model = load_storyboard(document)
             report = compose(model, root=root, cache=cache, quality=quality)
             report_path = Path(report.path).with_suffix(".report.json")
-            report_path.write_text(
-                json.dumps(report.model_dump(mode="json"), indent=2), encoding="utf-8"
+            replace_text(
+                report_path,
+                json.dumps(report.model_dump(mode="json"), indent=2),
+                encoding="utf-8",
             )
             hook, cta_pieces = copy_parts(root, document)
             # The size of the file written (a preview is half the storyboard's format).

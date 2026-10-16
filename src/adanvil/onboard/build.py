@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from adanvil.brand import Brand, default_brand, save_brand
 from adanvil.project import resolve_in_project
+from adanvil.safeio import replace_text
 
 from .questionnaire import BUNDLED_FAMILIES, Question, build_questionnaire
 from .site import SiteFacts, analyze_site
@@ -427,21 +428,19 @@ def onboard(root: Path, *, url: str | None, answers: dict[str, Any] | None) -> O
         if not url:
             raise ValueError("A website URL is required for the discovery step")
         facts = analyze_site(url)
-        facts_path.parent.mkdir(parents=True, exist_ok=True)
-        facts_path.write_text(facts.model_dump_json(indent=2), encoding="utf-8")
+        replace_text(facts_path, facts.model_dump_json(indent=2))
         return OnboardResult(facts=facts, questionnaire=build_questionnaire(facts))
 
     if url:
         facts = analyze_site(url)
-        facts_path.parent.mkdir(parents=True, exist_ok=True)
-        facts_path.write_text(facts.model_dump_json(indent=2), encoding="utf-8")
+        replace_text(facts_path, facts.model_dump_json(indent=2))
     else:
         facts = _load_facts(facts_path)
     brand, brief = build_brand(answers, facts=facts, project_root=root)
     brand_path = root / "brand.yaml"
     brief_path = root / "brand_brief.md"
     save_brand(brand, brand_path)
-    brief_path.write_text(brief, encoding="utf-8")
+    replace_text(brief_path, brief)
     questions = build_questionnaire(facts)
     answered_ids = {_ALIASES.get(key, key) for key, value in answers.items() if not _blank(value)}
     open_questions = [

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import urllib.request
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
@@ -8,6 +7,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from adanvil import netguard
 from adanvil.text import TextSpec, get_provider, load_font, render
 from adanvil.text.emoji import (
     DirectoryProvider,
@@ -87,11 +87,11 @@ def test_twemoji_strips_fe0f_and_warns_once(
 ) -> None:
     calls: list[str] = []
 
-    def fail(url: str, filename: str) -> None:
+    def fail(url: str, destination: object, **_kw: object) -> None:
         calls.append(url)
         raise OSError("offline")
 
-    monkeypatch.setattr(urllib.request, "urlretrieve", fail)
+    monkeypatch.setattr(netguard, "fetch_to_file", fail)
     provider = TwemojiProvider(tmp_path)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -150,8 +150,8 @@ def test_comment_styles_render_and_hide_author(look: str) -> None:
         TextSpec(
             style="comment",
             look=look,
-            header="Réponse au commentaire d'une cliente",
-            lines=["Réponse au commentaire d'une cliente"],
+            header="Réponse au commentaire d'un client",
+            lines=["Réponse au commentaire d'un client"],
             y=900,
             reactions=12,
         ),

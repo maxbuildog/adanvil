@@ -172,7 +172,7 @@ def test_a_shrinking_badge_keeps_its_centre() -> None:
             {
                 "type": "sticker",
                 "kind": "badge",
-                "text": "Satisfaite ou remboursée 60 jours",
+                "text": "Satisfait ou remboursé 30 jours",
                 "x": 190,
                 "y": 250,
                 "size": 40,
@@ -209,7 +209,7 @@ def _cta_variant(caption: str, badge: str) -> dict[str, Any]:
 
 def test_cta_text_shows_the_role_of_each_text(tmp_path: Path) -> None:
     root = _project(tmp_path)
-    price, guarantee = "65,90 € au lieu de 89,90 €", "Satisfaite ou remboursée 60 jours"
+    price, guarantee = "24,90 € au lieu de 34,90 €", "Satisfait ou remboursé 30 jours"
     _, a = copy_parts(root, _cta_variant(price, guarantee))
     _, b = copy_parts(root, _cta_variant(guarantee + " ✅", price))
     assert a == [f"caption: {price}", f"badge: {guarantee}"]

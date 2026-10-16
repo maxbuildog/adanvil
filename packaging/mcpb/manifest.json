@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "adanvil",
   "display_name": "AdAnvil",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Agentic video ad editor: turns your brand's footage into ready-to-run 9:16 ads. Needs ffmpeg 6.1 or newer installed on your computer.",
   "author": {
     "name": "maxbuildog"

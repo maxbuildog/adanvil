@@ -16,7 +16,7 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from mcp.server.mcpserver import Context, Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -32,7 +32,7 @@ from adanvil.endcard import emoji_provider, write_end_card
 from adanvil.export import export_timeline
 from adanvil.ffmpeg import extract_frame, frame_on_screen, probe
 from adanvil.formats import FORMATS, ratio_of
-from adanvil.jobs import mark_dead_runner, read_job, resolve_job_file, start_job
+from adanvil.jobs import is_job_id, mark_dead_runner, read_job, resolve_job_file, start_job
 from adanvil.library import (
     annotate,
     entry_line,
@@ -53,7 +53,14 @@ from adanvil.music import MusicError
 from adanvil.music import music_fetch as _music_fetch
 from adanvil.music import music_search as _music_search
 from adanvil.onboard import facts_summary, onboard
-from adanvil.project import init_project, read_project_text, resolve_in_project
+from adanvil.project import (
+    check_managed_folders,
+    check_project_dir,
+    init_project,
+    is_unc_path,
+    read_project_text,
+    resolve_in_project,
+)
 from adanvil.qc import PairError, qc_report
 from adanvil.qc import ad_score as _ad_score
 from adanvil.qc import compare_pair as _compare_pair
@@ -67,6 +74,7 @@ from adanvil.reference.breakdown import (
     TEXT_SPEAKER_VALUES,
     TYPE_VALUES,
 )
+from adanvil.safeio import replace_bytes, replace_text
 from adanvil.safezones import platforms_for_size
 from adanvil.sfx import SfxError, list_sfx
 from adanvil.speech.analyze import (
@@ -103,6 +111,7 @@ from adanvil.storyboard.validate import _schema_issues
 from adanvil.text import render as render_text
 from adanvil.text.animate import StatePlan
 from adanvil.text.emoji import DirectoryProvider, directory_emoji, missing_emoji
+from adanvil.text.fonts import unusable_family_message, usable_family
 from adanvil.variants import expand_matrix, format_errors, variants_sheet
 from adanvil.vision import available as vision_available
 from adanvil.vision import status as vision_status
@@ -156,6 +165,11 @@ missing: reword those words and check the transcript.
 The rules in docs/EDITING_GUIDE.md apply; retrieve them with editing_guide.
 """
 
+# The only transcription models a tool argument may name: faster-whisper downloads any Hugging
+# Face repository, or loads a local folder, for any other string.
+WhisperModelName = Literal[
+    "tiny", "base", "small", "medium", "large-v2", "large-v3", "large-v3-turbo"
+]
 _INDEX_SYNC_LIMIT = 8  # more new files than this and library_index runs as a job
 _SPEECH_SYNC_LIMIT = 2  # more clips to transcribe than this: also a job (CPU speech is slow)
 _VISION_SYNC_LIMIT = 4  # more entries for the vision pass than this: also a job
@@ -168,12 +182,21 @@ def _tool_error(message: str) -> ToolError:
 
 
 def _require_absolute(path_value: str, label: str) -> Path:
-    if not isinstance(path_value, str) or not path_value.strip():
-        raise _tool_error(f"{label} must be an absolute path")
-    path = Path(path_value)
-    if not path.is_absolute():
-        raise _tool_error(f"{label} must be an absolute path: {path_value!r}")
-    return path.resolve()
+    """The real path of a project folder: absolute, not a network path, a drive or filesystem
+    root, the home folder or a parent of it, and inside ``ADANVIL_PROJECTS_DIR`` when that is
+    set. Every tool that takes a ``project_dir`` goes through here, before any file is touched."""
+
+    try:
+        return check_project_dir(path_value, label)
+    except ValueError as exc:
+        raise _tool_error(str(exc)) from exc
+
+
+def _check_managed_folders(root: Path) -> None:
+    try:
+        check_managed_folders(root)
+    except ValueError as exc:
+        raise _tool_error(str(exc)) from exc
 
 
 def _project(project_dir: str) -> Path:
@@ -184,6 +207,7 @@ def _project(project_dir: str) -> Path:
         raise _tool_error(f"Project path is not a directory: {root}")
     if not (root / "adanvil.json").is_file():
         raise _tool_error(f"Not an AdAnvil project (adanvil.json is missing): {root}")
+    _check_managed_folders(root)
     _PROJECT_ROOTS.add(root)
     return root
 
@@ -192,6 +216,7 @@ def _project_for_init(project_dir: str) -> Path:
     root = _require_absolute(project_dir, "project_dir")
     if root.exists() and not root.is_dir():
         raise _tool_error(f"Project path is not a directory: {root}")
+    _check_managed_folders(root)
     _PROJECT_ROOTS.add(root)
     return root
 
@@ -225,11 +250,51 @@ def _jsonable(value: Any) -> Any:
 
 
 def _write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(_jsonable(value), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    # A new file renamed over the target: a link planted at ``path`` is replaced, never followed.
+    replace_text(
+        path, json.dumps(_jsonable(value), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+
+
+_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
+
+
+def _confined_file(
+    root: Path | None, value: object, suffixes: set[str] | None = None
+) -> Path | None:
+    """The real path of a file that a stored JSON names, only when it is a regular file inside
+    the real ``root`` and not a network path; ``None`` otherwise. A relative ``value`` is read
+    from ``root``. Job reports, catalogs and batch results are project files anyone can plant:
+    a path read from one is never trusted to point at an image or a file of the project."""
+
+    if root is None or not isinstance(value, str) or not value.strip() or "\x00" in value:
+        return None
+    if is_unc_path(value):
+        return None
+    candidate = Path(value) if Path(value).is_absolute() else Path(root) / value
+    real = os.path.realpath(candidate)
+    real_root = os.path.realpath(root)
+    if is_unc_path(real) or is_unc_path(real_root):
+        return None
+    folder = os.path.normcase(real_root)
+    try:
+        inside = os.path.commonpath((os.path.normcase(real), folder)) == folder
+    except ValueError:  # another drive
+        return None
+    if not inside or not os.path.isfile(real):
+        return None
+    if suffixes is not None and Path(real).suffix.casefold() not in suffixes:
+        return None
+    return Path(real)
+
+
+def _confined_image(root: Path, value: str, label: str) -> Path:
+    """The contact sheet or mosaic that ``value`` names, or a clear tool error."""
+
+    path = _confined_file(root, value, _IMAGE_SUFFIXES)
+    if path is None:
+        raise _tool_error(f"Invalid {label}: {value!r} is not an image file inside the project")
+    return path
 
 
 def _source_entries(root: Path, source: str) -> list[Any]:
@@ -428,7 +493,9 @@ def _extract_or_open_frame(root: Path, source: str, t: float) -> tuple[Path, boo
         if not frame_path.is_file():
             try:
                 with PILImage.open(source_path) as image:
-                    image.convert("RGB").save(frame_path, format="PNG")
+                    encoded = io.BytesIO()
+                    image.convert("RGB").save(encoded, format="PNG")
+                replace_bytes(frame_path, encoded.getvalue())
             except (OSError, ValueError) as exc:
                 raise _tool_error(f"Could not read image source {source!r}: {exc}") from exc
         return frame_path, False
@@ -581,8 +648,16 @@ def render_caption_preview(
     unmatched_emphasis: list[str] = []
     state = None
     animated_render = None
+    font_warnings: list[str] = []
     try:
         values = dict(overlay)
+        # A font that is neither bundled nor a file of the project (an absolute or network path)
+        # is never opened: the preview uses the default family, as the render does.
+        if isinstance(values.get("family"), str):
+            usable = usable_family(values["family"], root)
+            if usable is None:
+                font_warnings.append(unusable_family_message(values["family"]))
+            values["family"] = usable
         chunk_index = _index_argument(values, "chunk_index", str(overlay_type))
         word_index = _index_argument(values, "word_index", str(overlay_type))
         chosen: int | None = chunk_index
@@ -680,6 +755,12 @@ def render_caption_preview(
             )
         brand = _load_brand(root)
         applied = brand.apply_to_caption(model)
+        brand_family = getattr(applied, "family", None)
+        if isinstance(brand_family, str) and usable_family(brand_family, root) != brand_family:
+            usable = usable_family(brand_family, root)
+            if usable is None:
+                font_warnings.append(unusable_family_message(brand_family))
+            applied = applied.model_copy(update={"family": usable})
         provider = _brand_emoji_provider(root, brand, emoji)
         emoji_lines = (
             list(applied.lines)
@@ -736,10 +817,12 @@ def render_caption_preview(
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output_format = "PNG" if output.suffix.casefold() == ".png" else "JPEG"
+    encoded = io.BytesIO()
     if output_format == "PNG":
-        background.convert("RGB").save(output, format=output_format, optimize=True)
+        background.convert("RGB").save(encoded, format=output_format, optimize=True)
     else:
-        background.convert("RGB").save(output, format=output_format, quality=92, optimize=True)
+        background.convert("RGB").save(encoded, format=output_format, quality=92, optimize=True)
+    replace_bytes(output, encoded.getvalue())  # a link planted at ``output`` is replaced
     if animated_render is not None and state is not None:
         payload = {
             "path": _relative_path(root, output),
@@ -769,9 +852,11 @@ def render_caption_preview(
         payload["emphasis_unmatched"] = unmatched_emphasis
         payload["warnings"] = [
             f"emphasis_unmatched: {entry!r} matches no word of the caption: nothing is "
-            "highlighted (write it as shown, e.g. '65,90 €', or mark it with *...*)"
+            "highlighted (write it as shown, e.g. '24,90 €', or mark it with *...*)"
             for entry in unmatched_emphasis
         ]
+    if font_warnings:
+        payload["warnings"] = [*payload.get("warnings", []), *font_warnings]
     if expanded_payload is not None:
         payload["expanded"] = expanded_payload
     background.close()
@@ -924,7 +1009,14 @@ class _RenderJobs:
         _JOB_FILES[job_id] = Path(str(record["job_file"]))
         return job_id
 
+    @staticmethod
+    def _check_id(job_id: str) -> None:
+        if not is_job_id(job_id):
+            raise JobNotFound(f"invalid job id {job_id!r}: a job id looks like job-0123abcd")
+
     def _find_file(self, job_id: str, project_dir: Path | None = None) -> Path | None:
+        if not is_job_id(job_id):
+            return None
         known = _JOB_FILES.get(job_id)
         if known is not None and known.is_file():
             return known
@@ -933,22 +1025,27 @@ class _RenderJobs:
         if found is not None:
             _JOB_FILES[job_id] = found
             return found
-        candidates = [root / "renders" / "jobs" / f"{job_id}.json" for root in _PROJECT_ROOTS]
-        try:
-            candidates.extend(
-                path
-                for path in Path.cwd().rglob(f"{job_id}.json")
-                if path.parent.name == "jobs" and path.parent.parent.name == "renders"
-            )
-        except (OSError, PermissionError):
-            pass
-        for candidate in candidates:
+        # The projects this server has opened (never a search of the working folder).
+        for root in _PROJECT_ROOTS:
+            candidate = root / "renders" / "jobs" / f"{job_id}.json"
             if candidate.is_file():
                 _JOB_FILES[job_id] = candidate
                 return candidate
         return None
 
+    def owner_root(self, job_id: str, project_dir: Path | None = None) -> Path | None:
+        """The project that owns the job file ``<root>/renders/jobs/<id>.json``, else ``None``."""
+
+        job_file = self._find_file(job_id, project_dir)
+        if job_file is None or job_file.name != f"{job_id}.json":
+            return None
+        folder = job_file.parent
+        if folder.name != "jobs" or folder.parent.name != "renders":
+            return None
+        return folder.parent.parent
+
     def get(self, job_id: str, project_dir: Path | None = None) -> dict[str, Any]:
+        self._check_id(job_id)
         job_file = self._find_file(job_id, project_dir)
         if job_file is None:
             raise JobNotFound(f"job not found: pass project_dir ({job_id})")
@@ -1021,6 +1118,7 @@ class _RenderJobs:
     def status(
         self, job_id: str, wait_seconds: float = 0, project_dir: Path | None = None
     ) -> dict[str, Any]:
+        self._check_id(job_id)
         if wait_seconds < 0 or wait_seconds > 600:
             raise ValueError("wait_seconds must be between 0 and 600")
         deadline = time.monotonic() + wait_seconds
@@ -1049,20 +1147,50 @@ def _report_from_job(manager: _RenderJobs, job_id: str) -> Any:
         raise _tool_error(f"Saved render report is invalid for job {job_id}: {exc}") from exc
 
 
+def _confined_report(root: Path, report: Any) -> Any:
+    """``report`` keeping only the overlay pictures that are PNG files of the project.
+
+    A render report is a project file anyone can plant: the pictures it names are opened by
+    ``qc_run``, so a path outside the project (or a network path) is dropped and that overlay
+    is checked on the frame alone."""
+
+    overlays: list[dict[str, Any]] = []
+    for item in report.overlays:
+        entry = dict(item)
+        if entry.get("png") is not None:
+            kept = _confined_file(root, entry["png"], {".png"})
+            entry["png"] = str(kept) if kept is not None else None
+        states = entry.get("states")
+        if isinstance(states, list):
+            confined_states = []
+            for state in states:
+                kept = (
+                    _confined_file(root, state.get("png"), {".png"})
+                    if isinstance(state, Mapping)
+                    else None
+                )
+                if kept is not None:
+                    confined_states.append({**state, "png": str(kept)})
+            entry["states"] = confined_states
+        overlays.append(entry)
+    return report.model_copy(update={"overlays": overlays})
+
+
 def _report_from_argument(root: Path, manager: _RenderJobs, value: str | None) -> Any | None:
     if value is None:
         return None
     if value.startswith("job-"):
-        return _report_from_job(manager, value)
+        return _confined_report(root, _report_from_job(manager, value))
     path = _safe_project_path(root, value, "render report path")
     if not path.is_file():
         raise _tool_error(f"Render report file does not exist: {value}")
     try:
         from adanvil.render.compose import RenderReport
 
-        return RenderReport.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        report = RenderReport.model_validate(json.loads(path.read_text(encoding="utf-8")))
     except Exception as exc:
         raise _tool_error(f"Could not load render report {value!r}: {exc}") from exc
+    return _confined_report(root, report)
 
 
 def build_server() -> MCPServer:
@@ -1094,7 +1222,15 @@ def build_server() -> MCPServer:
     def project_read_text(
         project_dir: str, path: str, max_bytes: int = 65536
     ) -> list[dict[str, object]]:
-        """Read a UTF-8 project text file using the project's safe path rules."""
+        """Read a UTF-8 project text file using the project's safe path rules.
+
+        Only AdAnvil's own files can be read: ``adanvil.json``, ``brand.yaml``, ``catalog.json``
+        and ``brand_brief.md`` at the top of the project, and the files under ``brand/``,
+        ``reference/``, ``renders/``, ``music/``, ``storyboards/``, ``exports/``, ``cache/``,
+        ``voice/``, ``sfx/`` and ``footage/`` (extensions .txt, .md, .json, .yaml, .yml, .csv).
+        Any other file, and any name that starts with a dot, is refused. ``max_bytes`` (default
+        65536) is capped at 1 MB; a larger value is clamped and the result ``note`` says so.
+        """
 
         root = _project(project_dir)
         try:
@@ -1159,10 +1295,12 @@ def build_server() -> MCPServer:
         root = _project(project_dir)
         brand = _load_brand(root)
         brief_path = root / "brand_brief.md"
+        # a brief that is a link to a file outside the project is not read
+        brief_file = _confined_file(root, "brand_brief.md")
         return [
             {
                 "brand": brand.model_dump(mode="json"),
-                "brief": brief_path.read_text(encoding="utf-8") if brief_path.is_file() else None,
+                "brief": brief_file.read_text(encoding="utf-8") if brief_file else None,
                 "emoji_available": _emoji_available(root, brand),
                 "brand_path": _relative_path(root, root / "brand.yaml"),
                 "brief_path": _relative_path(root, brief_path) if brief_path.is_file() else None,
@@ -1329,6 +1467,9 @@ def build_server() -> MCPServer:
         sheet_path = _safe_project_path(root, entry.sheet, "sheet path")
         if not sheet_path.is_file():
             raise _tool_error(f"Contact sheet does not exist: {entry.sheet}")
+        # catalog.json is a project file anyone can plant: the sheet it names must be an image
+        # file inside the project.
+        sheet_path = _confined_image(root, entry.sheet, "sheet path")
         payload = entry.model_dump(mode="json")
         payload["sheet_path"] = entry.sheet
         return [payload, _image(sheet_path)]
@@ -1491,7 +1632,7 @@ def build_server() -> MCPServer:
         ]
 
     @server.tool(structured_output=False)
-    async def vision_setup(python: str | None = None) -> list[dict[str, Any]]:
+    async def vision_setup() -> list[dict[str, Any]]:
         """Install the optional vision environment (once, several minutes, about 2.5 GB).
 
         It makes its own Python environment in the AdAnvil cache folder with a
@@ -1500,14 +1641,15 @@ def build_server() -> MCPServer:
         downloads their weights. It runs on the CPU. Afterwards ``library_index``
         also looks at every image and video (shot search by sentence, automatic
         tags, product versions, faces for ``focus: "face"``). Without it
-        everything else works as before. ``python`` picks the interpreter the
-        environment is made from. The same as ``adanvil vision-setup``.
+        everything else works as before. The environment is made from the
+        default Python of this machine: to build it from another interpreter,
+        a person runs ``adanvil vision-setup --python <path>`` in a terminal.
         """
 
-        if vision_available() and python is None:
+        if vision_available():
             return [{"status": "ready", "message": "the vision environment is already installed"}]
         try:
-            interpreter = await asyncio.to_thread(_vision_setup, python=python)
+            interpreter = await asyncio.to_thread(_vision_setup)
         except Exception as exc:
             raise _tool_error(f"Vision setup failed: {exc}") from exc
         return [{"status": vision_status(), "python": str(interpreter)}]
@@ -1623,7 +1765,7 @@ def build_server() -> MCPServer:
     def speech_refine(
         project_dir: str,
         sources: list[str],
-        model: str = "medium",
+        model: WhisperModelName = "medium",
         language: str | None = None,
     ) -> dict[str, Any]:
         """Transcribe chosen clips again with a stronger model and replace their words.
@@ -1633,8 +1775,9 @@ def build_server() -> MCPServer:
         (before cutting and captioning): ``sources`` lists project paths of indexed clips (a
         file, or a folder for every clip below it) or catalogue entry ids. It starts a
         detached job (wait with job_status(job_id, wait_seconds=90); progress counts clips)
-        that transcribes them with ``model`` (default medium: slower, much more accurate; a
-        medium model needs about 2 GB of memory) and the brand vocabulary (brand name,
+        that transcribes them with ``model`` (one of tiny, base, small, medium, large-v2,
+        large-v3, large-v3-turbo; default medium: slower, much more accurate; a medium model
+        needs about 2 GB of memory) and the brand vocabulary (brand name,
         product name and ``speech.vocabulary`` of brand.yaml), then replaces the words of
         each clip in place (``speech_view`` reports the ``model``). A clip that fails keeps
         its previous words. The language is the brand's, else detected, unless ``language``
@@ -1646,8 +1789,8 @@ def build_server() -> MCPServer:
         root = _project(project_dir)
         if not isinstance(sources, list) or not sources:
             raise _tool_error("sources must be a non-empty list of clip paths or entry ids")
-        if not model.strip():
-            raise _tool_error("model must not be empty")
+        if model not in get_args(WhisperModelName):
+            raise _tool_error(f"model must be one of: {', '.join(get_args(WhisperModelName))}")
         known_ids = set(load_catalog(root).entries)
         for written in sources:
             if not isinstance(written, str):
@@ -1658,15 +1801,15 @@ def build_server() -> MCPServer:
         if not entries:
             reasons = "; ".join(f"{item['path']}: {item['reason']}" for item in skipped)
             raise _tool_error(f"No clip to refine ({reasons or 'nothing matched'})")
-        job_id = jobs.submit_refine(root, [entry.id for entry in entries], model.strip(), language)
+        job_id = jobs.submit_refine(root, [entry.id for entry in entries], model, language)
         return {
             "job_id": job_id,
             "status": "queued",
             "clips": len(entries),
-            "model": model.strip(),
+            "model": model,
             "skipped": skipped,
             "message": (
-                f"{len(entries)} clip(s) to transcribe again with {model.strip()}: wait with "
+                f"{len(entries)} clip(s) to transcribe again with {model}: wait with "
                 "job_status(job_id, wait_seconds=90); call it again if the connection drops."
             ),
         }
@@ -1763,7 +1906,8 @@ def build_server() -> MCPServer:
             result = decode_reference(root, video, transcribe=transcribe, language=language)
         except Exception as exc:
             raise _tool_error(f"Reference decode failed: {exc}") from exc
-        sheet_path = _safe_project_path(root, result.sheet, "reference sheet")
+        _safe_project_path(root, result.sheet, "reference sheet")
+        sheet_path = _confined_image(root, result.sheet, "reference sheet")
         payload = result.model_dump(mode="json")
         payload["sheet_path"] = result.sheet
         words = payload.pop("transcript", None)
@@ -1795,7 +1939,7 @@ def build_server() -> MCPServer:
         payload["shot_sheets_not_inline"] = result.shot_sheets[6:]
         images = [_image(sheet_path)]
         for shot_sheet in inline:
-            images.append(_image(_safe_project_path(root, shot_sheet, "shot sheet")))
+            images.append(_image(_confined_image(root, shot_sheet, "shot sheet")))
         return [payload, *images]
 
     @server.tool(structured_output=False)
@@ -2250,6 +2394,17 @@ def build_server() -> MCPServer:
 
         root = _project(project_dir)
         document = _load_storyboard_raw(root, base)
+        # the base name goes into the contact sheet's file name: it must be a valid name
+        base_name = document.get("name", "storyboard")
+        try:
+            base_name = storyboard_name(base_name) if isinstance(base_name, str) else ""
+        except ValueError:
+            base_name = ""
+        if not base_name:
+            raise _tool_error(
+                "The base storyboard needs a valid name (1 to 80 letters, digits, '_', '.' or "
+                f"'-', not starting with a dot), got {document.get('name')!r}"
+            )
         try:
             built = expand_matrix(document, variants, name_pattern, root=root)
         except ValueError as exc:
@@ -2316,12 +2471,7 @@ def build_server() -> MCPServer:
         if contact_sheet:
             # named after the variant set, so two matrices from one base never overwrite
             first = built[0].name if built else "none"
-            sheet = (
-                root
-                / "renders"
-                / "variants"
-                / f"{payload['base']}_{first}_{len(built)}v_sheet.jpg"
-            )
+            sheet = root / "renders" / "variants" / f"{base_name}_{first}_{len(built)}v_sheet.jpg"
             try:
                 made, notes = variants_sheet(root, built, sheet, cache=Cache(root / "cache"))
                 payload["contact_sheet"] = _relative_path(root, made)
@@ -2776,6 +2926,8 @@ def build_server() -> MCPServer:
         or accept it when the transcript differs only in punctuation.
         """
 
+        if not is_job_id(job_id):
+            raise _tool_error(f"invalid job id {job_id!r}: a job id looks like job-0123abcd")
         project = _project(project_dir) if project_dir is not None else None
         try:
             status = await asyncio.to_thread(jobs.status, job_id, wait_seconds, project)
@@ -2783,9 +2935,16 @@ def build_server() -> MCPServer:
             raise _tool_error(str(exc)) from exc
         images: list[Any] = []
         if status["status"] == "done" and status.get("sheet"):
-            sheet_path = Path(str(status["sheet"]))
-            if sheet_path.is_file():
-                images.append(_image(sheet_path))
+            # The sheet path comes from the job document, which is a project file anyone can
+            # plant: only an image file inside the project that owns the job is returned.
+            sheet_path = _confined_file(
+                jobs.owner_root(job_id, project), status["sheet"], _IMAGE_SUFFIXES
+            )
+            if sheet_path is not None:
+                try:
+                    images.append(_image(sheet_path))
+                except ToolError:
+                    pass  # not a readable picture: the status is still returned
         return [status, *images]
 
     @server.tool(structured_output=False)

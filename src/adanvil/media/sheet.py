@@ -17,6 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from adanvil import config
 from adanvil.ffmpeg import extract_frame, probe, run
+from adanvil.text.styles import save_image
 
 from .cache import Cache
 
@@ -142,7 +143,7 @@ def reference_shot_sheets(
                 font,
             )
         output = out_dir / f"shots-{sheet_number:02d}.jpg"
-        canvas.save(output, format="JPEG", quality=90, optimize=True)
+        save_image(canvas, output, format="JPEG", quality=90, optimize=True)
         sheets.append(output)
     return sheets
 
@@ -260,7 +261,7 @@ def media_mosaic(
             fill="#202020",
         )
         draw.text((x + 4, y + cell_height + 8), label, font=font, fill=(245, 245, 245))
-    canvas.save(out, format="JPEG", quality=88, optimize=True)
+    save_image(canvas, out, format="JPEG", quality=88, optimize=True)
     return out
 
 
@@ -412,7 +413,7 @@ def contact_sheet(
                 )
                 draw.text((x + padding, y + padding), label, fill=(255, 255, 255), font=font)
 
-        canvas.save(out, format="JPEG", quality=90, optimize=True)
+        save_image(canvas, out, format="JPEG", quality=90, optimize=True)
     finally:
         for temporary_frame in temporary_path.iterdir():
             temporary_frame.unlink(missing_ok=True)

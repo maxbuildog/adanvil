@@ -55,7 +55,10 @@ class FixtureHandler(BaseHTTPRequestHandler):
 
 
 @pytest.fixture()
-def site_server() -> str:
+def site_server(monkeypatch: pytest.MonkeyPatch) -> str:
+    # The fixture site is on the loopback address, which the download guard refuses unless the
+    # developer opts in (see adanvil.netguard); tests/test_security_c.py covers the refusal.
+    monkeypatch.setenv("ADANVIL_ALLOW_PRIVATE_URLS", "1")
     server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()

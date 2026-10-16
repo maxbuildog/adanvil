@@ -16,6 +16,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from collections.abc import Callable
 from datetime import date
@@ -23,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from adanvil.music import MUSIC_DIR, MusicError, _slug, write_licence_record
+from adanvil.safeio import replace_bytes, replace_text
 from adanvil.voice.setup import cache_dir
 
 MODEL_ID = "ACE-Step/ACE-Step-v1-3.5B"
@@ -97,7 +99,7 @@ def music_setup(
         subprocess.run(install, check=True)
     config = music_config_path()
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text(json.dumps({"python": str(interpreter)}, indent=2) + "\n", encoding="utf-8")
+    replace_text(config, json.dumps({"python": str(interpreter)}, indent=2) + "\n")
     print(f"Saved the music interpreter path to {config}")
     return interpreter
 
@@ -149,57 +151,51 @@ def _check_memory() -> None:
         )
 
 
-def generate_music(
-    root: Path,
-    prompt: str,
-    duration: float = 30.0,
-    *,
-    steps: int = DEFAULT_STEPS,
-    seed: int | None = None,
-    progress: Callable[[dict[str, Any]], None] | None = None,
-) -> dict[str, Any]:
-    """Generate an instrumental track of ``duration`` seconds into ``music/`` with its licence
-    record, then profile it. Raises ``MusicUnavailableError`` without the music environment."""
+def _own_file(value: object, folder: Path) -> Path | None:
+    """The file ``value`` names, when it is a real file inside ``folder`` (links resolved), else
+    None. The path comes from a line of the worker's output, which merges its stderr and can
+    echo text of the prompt: it is never trusted to point anywhere else."""
 
-    root = Path(root)
-    prompt = (prompt or "").strip()
-    if not prompt:
-        raise MusicError("prompt must not be empty")
-    if not MIN_DURATION <= float(duration) <= MAX_DURATION:
-        raise MusicError(f"duration must be between {MIN_DURATION:g} and {MAX_DURATION:g} seconds")
-    if not 8 <= int(steps) <= 60:
-        raise MusicError("steps must be between 8 and 60")
-    interpreter = configured_interpreter()
-    if interpreter is None:
-        raise MusicUnavailableError(
-            "the music environment is not installed: run 'adanvil music-setup' "
-            "(about 3 GB of packages, then about 8 GB of model weights at the first generation)"
-        )
-    _check_memory()
-    seed = secrets.randbelow(2**31) if seed is None else int(seed)
-    folder = root / MUSIC_DIR
-    folder.mkdir(parents=True, exist_ok=True)
-    name = f"gen-{_slug(prompt)[:28].strip('-')}-{seed}.flac"
-    target = folder / name
-    work = root / "cache" / "music-gen"
-    work.mkdir(parents=True, exist_ok=True)
-    request = work / f"{name}.request.json"
-    request.write_text(
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        path = Path(value).resolve(strict=True)
+        inside = path.is_relative_to(folder.resolve(strict=True))
+    except (OSError, ValueError, RuntimeError):
+        return None
+    return path if inside and path.is_file() else None
+
+
+def _run_worker(
+    interpreter: Path,
+    work: Path,
+    name: str,
+    prompt: str,
+    duration: float,
+    steps: int,
+    seed: int,
+    progress: Callable[[dict[str, Any]], None] | None,
+) -> dict[str, Any]:
+    """Run the worker on one request inside ``work`` and return its result line (a dict with
+    ``ok``); a worker that failed raises ``MusicUnavailableError``."""
+
+    request = work / "request.json"
+    replace_text(
+        request,
         json.dumps(
             {
                 "prompt": prompt,
-                "duration": float(duration),
-                "steps": int(steps),
+                "duration": duration,
+                "steps": steps,
                 "seed": seed,
                 "out": str(work / (Path(name).stem + ".wav")),
                 "checkpoint_dir": str(cache_dir() / "music-models"),
             }
         ),
-        encoding="utf-8",
     )
     timeout = float(os.environ.get("ADANVIL_MUSIC_TIMEOUT", "3600"))
     if progress is not None:
-        progress({"stage": "generating", "done": 0, "total": int(steps), "unit": "steps",
+        progress({"stage": "generating", "done": 0, "total": steps, "unit": "steps",
                   "message": "loading the model and generating"})  # fmt: skip
     process = subprocess.Popen(
         [str(interpreter), str(WORKER), str(request)],
@@ -234,20 +230,75 @@ def generate_music(
         raise
     for line in tail.splitlines():
         if line.startswith(_RESULT):
-            result = json.loads(line[len(_RESULT) :])
+            try:
+                found_result = json.loads(line[len(_RESULT) :])
+            except ValueError:
+                continue  # a line that only looks like the result (echoed text)
+            if isinstance(found_result, dict):
+                result = found_result
     if result is None or not result.get("ok"):
         reason = (result or {}).get("error") or f"the worker stopped (exit {process.returncode})"
         raise MusicUnavailableError(f"music generation failed: {reason}\n{tail[-600:]}")
-    produced = Path(result["out"])
-    if not produced.is_file():
-        raise MusicUnavailableError("music generation produced no file")
-    # The model writes 32-bit float WAV (11 MB for 30 s): keep a 16-bit FLAC (lossless enough).
-    from adanvil.ffmpeg import run as ffmpeg_run
+    return result
 
-    ffmpeg_run(["-y", "-i", str(produced), "-sample_fmt", "s16", "-c:a", "flac", str(target)])
-    produced.unlink(missing_ok=True)
-    produced.with_name(produced.stem + "_input_params.json").unlink(missing_ok=True)
-    request.unlink(missing_ok=True)
+
+def generate_music(
+    root: Path,
+    prompt: str,
+    duration: float = 30.0,
+    *,
+    steps: int = DEFAULT_STEPS,
+    seed: int | None = None,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """Generate an instrumental track of ``duration`` seconds into ``music/`` with its licence
+    record, then profile it. Raises ``MusicUnavailableError`` without the music environment."""
+
+    root = Path(root)
+    prompt = (prompt or "").strip()
+    if not prompt:
+        raise MusicError("prompt must not be empty")
+    if not MIN_DURATION <= float(duration) <= MAX_DURATION:
+        raise MusicError(f"duration must be between {MIN_DURATION:g} and {MAX_DURATION:g} seconds")
+    if not 8 <= int(steps) <= 60:
+        raise MusicError("steps must be between 8 and 60")
+    interpreter = configured_interpreter()
+    if interpreter is None:
+        raise MusicUnavailableError(
+            "the music environment is not installed: run 'adanvil music-setup' "
+            "(about 3 GB of packages, then about 8 GB of model weights at the first generation)"
+        )
+    _check_memory()
+    seed = secrets.randbelow(2**31) if seed is None else int(seed)
+    folder = root / MUSIC_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    name = f"gen-{_slug(prompt)[:28].strip('-')}-{seed}.flac"
+    target = folder / name
+    scratch = root / "cache" / "music-gen"
+    scratch.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix="gen-", dir=scratch))  # this request's own folder
+    try:
+        result = _run_worker(
+            interpreter, work, name, prompt, float(duration), int(steps), seed, progress
+        )
+        produced = _own_file(result.get("out"), work)
+        if produced is None:
+            raise MusicUnavailableError(
+                "music generation failed: the worker did not report a file of its own output "
+                "folder, so nothing was read or deleted"
+            )
+        # The model writes 32-bit float WAV (11 MB for 30 s): keep a 16-bit FLAC (lossless
+        # enough). ffmpeg writes inside the request folder; the track is then moved over the
+        # target by a rename, which never follows a link planted at its name.
+        from adanvil.ffmpeg import run as ffmpeg_run
+
+        encoded = work / name
+        ffmpeg_run(
+            ["-y", "-i", str(produced), "-sample_fmt", "s16", "-c:a", "flac", str(encoded)]
+        )
+        replace_bytes(target, encoded.read_bytes())
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
     relative = f"{MUSIC_DIR}/{name}"
     write_licence_record(
         root,

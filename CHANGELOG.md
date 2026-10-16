@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.1 (2026-10-15)
+
+Security release: please upgrade. An AI agent can be steered by text hidden in what it reads (a reference ad, a brand website, a transcript, a project folder shared by someone else). Before 0.3.1 such an agent could use AdAnvil to read, write, delete or run things outside the project, or to reach the local network. An independent audit found these issues; every one was reproduced, fixed and covered by tests. See `SECURITY.md`.
+
+Projects and files
+- A project can no longer be the home folder, one of its parents, a drive root or a network path. With `ADANVIL_PROJECTS_DIR` set (the Claude Desktop extension and the Docker image set it), every project must be inside that folder. The folders AdAnvil writes into (`renders/`, `cache/`, `brand/`, `music/`, `reference/`, `storyboards/`, `exports/`, `voice/`, `sfx/`) must be real folders of the project; `footage/` may still be a link to another drive.
+- Project paths with a hidden name (`.ssh`, `.config`) are refused. `project_read_text` reads only AdAnvil's own files (the project folders above, `footage/`, `adanvil.json`, `brand.yaml`, `catalog.json`, `brand_brief.md`), at most 1 MB.
+- `output.path` must be a `.mp4` under `renders/`; a render folder that leads outside the project through a link is refused.
+- `timeline_export` no longer deletes files outside the export folder when a planted `export_manifest.json` lists `../` paths.
+- `job_status` accepts only real job ids and returns a contact sheet only when it is a picture of the project that owns the job; `qc_run` ignores overlay pictures of a stored report that are not files of the project.
+- Every file AdAnvil writes in a project is written as a new file and moved into place, so a link planted in a received project is replaced, never followed.
+- A re-index only deletes speech files under `cache/speech/`; `variants_build` names its contact sheet from a validated name.
+
+Programs, fonts and downloads
+- `vision_setup` no longer takes a `python` argument (it ran the file it was given); `adanvil vision-setup --python` keeps it for the person at the keyboard.
+- ffmpeg and ffprobe are looked up on `PATH` only, never in the current folder; every input is opened with `-protocol_whitelist file`, and a playlist or stream description named like a media file (DASH, HLS, SMIL, SDP, an ffconcat list) is refused before ffmpeg opens it (a 7.0 build fetched the URLs of a DASH manifest despite the whitelist); ffmpeg no longer inherits the MCP stream as its input. The concat list and the text-removal filter are escaped correctly for any project folder name.
+- A caption, end card or brand font is a bundled family or a font file inside the project; anything else (an absolute or network path) is replaced by the default family with a `font_not_found` warning, and is never opened.
+- `brand_onboard`, music and sound downloads and emoji pictures go through one guarded client: public `http`/`https` addresses only (checked again at connection time and after each redirect), size and time limits. `ADANVIL_ALLOW_PRIVATE_URLS=1` lifts the address rule for development. The page parser no longer slows down on crafted text.
+- The Freesound key is sent in a header, never in a URL. A track title can no longer forge a line of `music/LICENCES.txt`.
+- Whisper model names (`speech_refine`, reference transcription, voice checks) and Kokoro voice names come from fixed lists; Whisper (base, small, medium), Chatterbox and Kokoro weights are loaded at the revisions they were tested with; the voice and vision environments install pinned versions of the packages that load models, and the spaCy model is checked by SHA-256.
+- Storyboards are bounded: at most 4096 px, 120 fps and 600 s (error `too_long`).
+- The background job runner starts Python with `-P`, so a file in the current folder is never imported. Cells of `manifest.csv` that start with `=`, `+`, `-` or `@` are quoted.
+
+Project
+- `SECURITY.md` (private reporting through GitHub). CI actions are pinned to commit SHAs with read-only permissions. The install instructions use the PyPI package and recommend `ADANVIL_PROJECTS_DIR`.
+- Examples use neutral prices and guarantees.
+- Tests: `test_security_a.py`, `test_security_b.py`, `test_security_c.py`, `test_safeio.py`.
+
 ## 0.3.0 (2026-10-13)
 
 Install in one step (Claude Desktop extension, Docker image) and hand an ad to a human editor (`timeline_export`: OpenTimelineIO, Final Cut Pro 7 XML for Premiere Pro and DaVinci Resolve, CMX 3600 EDL, SRT and the captions as transparent PNGs, with the sound effects, music levels, licences and an honest list of what an editor format cannot carry). Each step below was checked by an agent editing a real ad. Not yet proven: an actual import into Premiere Pro or DaVinci Resolve.
@@ -147,7 +175,7 @@ V2.4c: before/after reveal and picture cards.
 
 V2.4b fixes.
 
-- Emphasis on numbers and prices: `emphasis` matches `65,90 €`, `65,90`, `65.90€` and `-20%` however they are spaced, accepts a multi-word entry, and `*...*` markers work around any text (numbers, currency signs, `%`, spaces) without printing the stars. `storyboard_validate` and `caption_preview` warn `emphasis_unmatched` when an entry matches nothing.
+- Emphasis on numbers and prices: `emphasis` matches `24,90 €`, `24,90`, `24.90€` and `-20%` however they are spaced, accepts a multi-word entry, and `*...*` markers work around any text (numbers, currency signs, `%`, spaces) without printing the stars. `storyboard_validate` and `caption_preview` warn `emphasis_unmatched` when an entry matches nothing.
 - `storyboard_snap` gives the new version its own `name` and `output.path` (`save_as`, else `<name>_snapped`), so rendering it never overwrites the original; `storyboard_patch` moves a default `output.path` along with a renamed `name`.
 - A `badge` sticker with no `color` is the brand `visual.accent_color`, else neutral dark `#111827` with white text.
 - One emotion vocabulary (`vocab.EMOTION_VALUES`) for the breakdown, library annotate, `library_search` (an unknown filter value is now refused) and segments; the docs list all 13 values.

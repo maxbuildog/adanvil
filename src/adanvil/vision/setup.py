@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from adanvil.safeio import replace_text
+
 
 def cache_dir() -> Path:
     return Path(os.environ.get("ADANVIL_CACHE", Path.home() / ".cache" / "adanvil"))
@@ -32,8 +34,18 @@ def _interpreter(env_dir: Path) -> Path:
 
 _CPU_INDEX = "https://download.pytorch.org/whl/cpu"
 # transformers loads SigLIP 2; OpenCV runs the YuNet face detector; Pillow and numpy read
-# the pictures. Nothing here is a dependency of the base package.
-_PACKAGES = ["transformers", "numpy", "pillow", "opencv-python-headless", "huggingface_hub"]
+# the pictures. Nothing here is a dependency of the base package. The two packages that decide
+# what code loads and downloads the models are pinned (the versions run together on
+# 15/10/2026); the others are left free, their wheels differ by platform (torch for an Intel
+# Mac stopped at 2.2).
+_TORCH = "torch"
+_PACKAGES = [
+    "transformers==5.19.0",
+    "huggingface_hub==1.33.0",
+    "numpy",
+    "pillow",
+    "opencv-python-headless",
+]
 
 
 def _commands(
@@ -54,9 +66,9 @@ def _commands(
     installs: list[list[str]] = []
     if sys.platform.startswith("linux"):
         # The default Linux torch wheel pulls ~3 GB of CUDA packages; the vision runs on CPU.
-        installs.append([*pip, "--index-url", _CPU_INDEX, "torch"])
+        installs.append([*pip, "--index-url", _CPU_INDEX, _TORCH])
     else:
-        installs.append([*pip, "torch"])
+        installs.append([*pip, _TORCH])
     installs.append([*pip, *_PACKAGES])
     prefetch = [str(interpreter), str(worker_path()), "--prefetch"]
     return create, installs, prefetch, interpreter
@@ -94,9 +106,8 @@ def vision_setup(
     subprocess.run(prefetch, check=True, env={**os.environ, "ADANVIL_VISION_DIR": str(folder)})
     config = vision_config_path()
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text(
-        json.dumps({"python": str(interpreter), "models": str(folder)}, indent=2) + "\n",
-        encoding="utf-8",
+    replace_text(
+        config, json.dumps({"python": str(interpreter), "models": str(folder)}, indent=2) + "\n"
     )
     print(f"Saved vision interpreter path to {config}")
     return interpreter
